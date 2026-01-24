@@ -115,16 +115,21 @@ app.post("/upload-pdf", async (req, res) => {
 
 /* ================= SAVE BOOK ================= */
 app.post("/save-book", verifyPiToken, async (req, res) => {
-
   try {
-    const {
     const owner = req.piUser.username;
-const ownerUid = req.piUser.uid;
-  title, price, description, language, pageCount,
-      cover, pdf,
+    const ownerUid = req.piUser.uid;
+
+    const {
+      title,
+      price,
+      description,
+      language,
+      pageCount,
+      cover,
+      pdf
     } = req.body;
 
-    if (!title || !price || !cover || !pdf || !owner || !ownerUid) {
+    if (!title || !price || !cover || !pdf) {
       return res.status(400).json({ error: "Missing data" });
     }
 
@@ -143,10 +148,12 @@ const ownerUid = req.piUser.uid;
     });
 
     res.json({ success: true, bookId: doc.id });
+
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
+
 
 /* ================= RATINGS ================= */
 app.post("/rate-book", verifyPiToken, async (req, res) => {
@@ -488,6 +495,7 @@ app.post("/request-payout", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
+
 
 
 
