@@ -358,9 +358,11 @@ app.post("/resolve-pending", async (req, res) => {
 
 
 /* ================= PURCHASES ================= */
-app.post("/my-purchases", async (req, res) => {
+app.post("/my-purchases", verifyPiToken, async (req, res) => {
+
   try {
-    const { userUid } = req.body;
+    const userUid = req.piUser.uid;
+
     const snap = await db
       .collection("purchases")
       .doc(userUid)
@@ -495,6 +497,7 @@ app.post("/request-payout", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
+
 
 
 
