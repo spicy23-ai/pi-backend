@@ -11,7 +11,11 @@ cloudinary.v2.config({
 });
 /* ================= APP ================= */
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: "https://spicy23-ai.github.io",  // ضع هنا رابط موقعك بالضبط
+  methods: ["GET", "POST"]                 // فقط هذه الطرق مسموح بها
+}));
+
 app.use(express.json({ limit: "10mb" }));
 
 /* ================= FIREBASE ================= */
@@ -510,6 +514,7 @@ app.get("/pending-payments", async (req, res) => {
 });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
+
 
 
 
