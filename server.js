@@ -30,6 +30,35 @@ const db = admin.firestore();
 const PI_API_KEY = process.env.PI_API_KEY;
 const PI_API_URL = "https://api.minepi.com/v2";
 
+// ================= PI AUTH VERIFY =================
+async function verifyPiToken(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(401).json({ error: "No auth token" });
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+
+    const r = await fetch(`${PI_API_URL}/me`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+
+    if (!r.ok) {
+      return res.status(401).json({ error: "Invalid Pi token" });
+    }
+
+    const data = await r.json();
+    req.piUser = data; // ⬅️ المستخدم الحقيقي
+    next();
+  } catch (e) {
+    res.status(401).json({ error: "Auth failed" });
+  }
+}
+
+
 /* ================= ROOT ================= */
 app.get("/", (_, res) => res.send("Backend running"));
 
@@ -85,11 +114,14 @@ app.post("/upload-pdf", async (req, res) => {
 
 
 /* ================= SAVE BOOK ================= */
-app.post("/save-book", async (req, res) => {
+app.post("/save-book", verifyPiToken, async (req, res) => {
+
   try {
     const {
-      title, price, description, language, pageCount,
-      cover, pdf, owner, ownerUid
+    const owner = req.piUser.username;
+const ownerUid = req.piUser.uid;
+  title, price, description, language, pageCount,
+      cover, pdf,
     } = req.body;
 
     if (!title || !price || !cover || !pdf || !owner || !ownerUid) {
@@ -117,9 +149,12 @@ app.post("/save-book", async (req, res) => {
 });
 
 /* ================= RATINGS ================= */
-app.post("/rate-book", async (req, res) => {
+app.post("/rate-book", verifyPiToken, async (req, res) => {
+
   try {
-    const { bookId, voteType, userUid } = req.body;
+    const userUid = req.piUser.uid;
+
+    const { bookId, voteType } = req.body;
     if (!bookId || !voteType || !userUid) {
       return res.status(400).json({ error: "Missing data" });
     }
@@ -161,7 +196,8 @@ app.post("/book-ratings", async (req, res) => {
 
 /* ================= PAYMENTS ================= */
 
-app.post("/approve-payment", async (req, res) => {
+app.post("/approve-payment", verifyPiToken, async (req, res) => {
+
   try {
     const { paymentId } = req.body;
     if (!paymentId) return res.status(400).json({ error: "Missing paymentId" });
@@ -204,7 +240,8 @@ app.post("/approve-payment", async (req, res) => {
 });
 
 
-app.post("/complete-payment", async (req, res) => {
+app.post("/complete-payment", verifyPiToken, async (req, res) => {
+
   try {
     const { paymentId, txid } = req.body;
     if (!paymentId || !txid) return res.status(400).json({ error: "Missing payment data" });
@@ -336,9 +373,12 @@ app.post("/my-purchases", async (req, res) => {
 });
 
 /* ================= GET PDF ================= */
-app.post("/get-pdf", async (req, res) => {
+app.post("/get-pdf", verifyPiToken, async (req, res) => {
+
   try {
-    const { bookId, userUid } = req.body;
+   const { bookId } = req.body;
+const userUid = req.piUser.uid;
+
 
     const p = await db
       .collection("purchases")
@@ -448,6 +488,7 @@ app.post("/request-payout", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
+
 
 
 
