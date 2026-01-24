@@ -40,6 +40,43 @@ app.get("/books", async (_, res) => {
   }
 });
 
+/* ================= UPLOAD FILES ================= */
+// رفع صورة الغلاف
+app.post("/upload-cover", async (req, res) => {
+  try {
+    const { file } = req.body; // file هنا Base64
+    if (!file) return res.status(400).json({ error: "No file provided" });
+
+    const result = await cloudinary.v2.uploader.upload(file, {
+      folder: "books/covers"
+    });
+
+    res.json({ success: true, url: result.secure_url });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// رفع PDF
+app.post("/upload-pdf", async (req, res) => {
+  try {
+    const { file } = req.body; // Base64
+    if (!file) return res.status(400).json({ error: "No file provided" });
+
+    const result = await cloudinary.v2.uploader.upload(file, {
+      folder: "books/pdfs",
+      resource_type: "raw" // مهم للـ PDF
+    });
+
+    res.json({ success: true, url: result.secure_url });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 /* ================= SAVE BOOK ================= */
 app.post("/save-book", async (req, res) => {
   try {
@@ -470,6 +507,7 @@ app.get("/pending-payments", async (req, res) => {
 });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
+
 
 
 
