@@ -179,9 +179,11 @@ app.post("/rate-book", verifyPiToken, async (req, res) => {
   }
 });
 
-app.post("/book-ratings", async (req, res) => {
+app.post("/book-ratings", verifyPiToken, async (req, res) => {
+  
   try {
-    const { bookId, userUid } = req.body;
+    const userUid = req.piUser.uid; // ← المستخدم الحقيقي من Pi token
+  const { bookId } = req.body;     // فقط bookId من frontend
     const snap = await db
       .collection("ratings")
       .doc(bookId)
@@ -385,8 +387,9 @@ app.post("/my-purchases", verifyPiToken, async (req, res) => {
 app.post("/get-pdf", verifyPiToken, async (req, res) => {
 
   try {
-   const { bookId } = req.body;
-const userUid = req.piUser.uid;
+  const { bookId } = req.body;
+const userUid = req.piUser.uid; // ← المستخدم الحقيقي من Pi token
+
 
 
     const p = await db
@@ -502,6 +505,7 @@ const { walletAddress } = req.body;
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
+
 
 
 
