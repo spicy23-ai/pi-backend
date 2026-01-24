@@ -66,7 +66,7 @@ app.post("/upload-pdf", async (req, res) => {
 
     const result = await cloudinary.v2.uploader.upload(file, {
       folder: "books/pdfs",
-      resource_type: "raw" // مهم للـ PDF
+      resource_type: "raw"  // <-- هذا السطر مهم جداً
     });
 
     res.json({ success: true, url: result.secure_url });
@@ -507,6 +507,7 @@ app.get("/pending-payments", async (req, res) => {
 });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
+
 
 
 
