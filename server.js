@@ -161,31 +161,10 @@ app.post("/book-ratings", async (req, res) => {
 app.post("/approve-payment", async (req, res) => {
   try {
     const { paymentId } = req.body;
-    if (!paymentId) return res.status(400).json({ error: "Missing paymentId" });
+    if (!paymentId) {
+      return res.status(400).json({ error: "Missing paymentId" });
+    }
 
-    // جلب بيانات الدفع من Pi
-    const paymentRes = await fetch(`${PI_API_URL}/payments/${paymentId}`, {
-      method: "GET",
-      headers: { Authorization: `Key ${PI_API_KEY}` }
-    });
-
-    if (!paymentRes.ok) throw new Error(await paymentRes.text());
-    const paymentData = await paymentRes.json();
-
-    const bookId = paymentData.metadata?.bookId;
-    const userUid = paymentData.metadata?.userUid;
-
-    if (!bookId || !userUid) return res.status(400).json({ error: "Missing metadata in Pi payment" });
-
-    // حفظ الدفع كـ pending
-    await db.collection("pendingPayments").doc(paymentId).set({
-      bookId,
-      userUid,
-      status: "pending",
-      createdAt: Date.now()
-    });
-
-    // الموافقة على الدفع
     const r = await fetch(`${PI_API_URL}/payments/${paymentId}/approve`, {
       method: "POST",
       headers: { Authorization: `Key ${PI_API_KEY}` }
@@ -201,20 +180,36 @@ app.post("/approve-payment", async (req, res) => {
 });
 
 
-
 // 🔹 complete-payment (النسخة الصحيحة)
 app.post("/complete-payment", async (req, res) => {
   try {
     const { paymentId, txid } = req.body;
-    if (!paymentId || !txid) return res.status(400).json({ error: "Missing payment data" });
 
-    // جلب الدفع من pending
-    const pendingSnap = await db.collection("pendingPayments").doc(paymentId).get();
-    if (!pendingSnap.exists) return res.status(400).json({ error: "Pending payment not found" });
+    if (!paymentId || !txid) {
+      return res.status(400).json({ error: "Missing payment data" });
+    }
 
-    const { bookId, userUid } = pendingSnap.data();
+    // 1️⃣ جلب بيانات الدفع من Pi
+    const paymentRes = await fetch(`${PI_API_URL}/payments/${paymentId}`, {
+      method: "GET",
+      headers: { Authorization: `Key ${PI_API_KEY}` }
+    });
 
-    // إكمال الدفع على Pi
+    if (!paymentRes.ok) {
+      throw new Error(await paymentRes.text());
+    }
+
+    const paymentData = await paymentRes.json();
+
+    // 2️⃣ استخراج البيانات من metadata (مصدر موثوق)
+    const bookId = paymentData.metadata?.bookId;
+    const userUid = paymentData.metadata?.userUid;
+
+    if (!bookId || !userUid) {
+      throw new Error("Missing metadata from Pi payment");
+    }
+
+    // 3️⃣ إكمال الدفع
     const completeRes = await fetch(`${PI_API_URL}/payments/${paymentId}/complete`, {
       method: "POST",
       headers: {
@@ -224,18 +219,28 @@ app.post("/complete-payment", async (req, res) => {
       body: JSON.stringify({ txid })
     });
 
-    if (!completeRes.ok) throw new Error(await completeRes.text());
+    if (!completeRes.ok) {
+      throw new Error(await completeRes.text());
+    }
 
-    // تحديث Firestore
+    // 4️⃣ تحديث Firestore (transaction)
     const bookRef = db.collection("books").doc(bookId);
+
     await db.runTransaction(async (t) => {
-      t.update(bookRef, { salesCount: admin.firestore.FieldValue.increment(1) });
-      t.set(db.collection("purchases").doc(userUid).collection("books").doc(bookId), { purchasedAt: Date.now() });
+      t.update(bookRef, {
+        salesCount: admin.firestore.FieldValue.increment(1)
+      });
+
+      t.set(
+        db.collection("purchases")
+          .doc(userUid)
+          .collection("books")
+          .doc(bookId),
+        { purchasedAt: Date.now() }
+      );
     });
 
-    // حذف الدفع من pending
-    await db.collection("pendingPayments").doc(paymentId).delete();
-
+    // 5️⃣ إرسال رابط الكتاب
     const bookSnap = await bookRef.get();
     res.json({ success: true, pdfUrl: bookSnap.data().pdf });
 
@@ -244,7 +249,6 @@ app.post("/complete-payment", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
 
 
 // 🔹 معالجة الدفعات المعلقة (اختياري – لكنه آمن)
@@ -506,8 +510,6 @@ app.get("/pending-payments", async (req, res) => {
 });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
-
-
 
 
 
