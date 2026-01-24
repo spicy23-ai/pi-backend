@@ -3,8 +3,6 @@ import admin from "firebase-admin";
 import fetch from "node-fetch";
 import cors from "cors";
 import cloudinary from 'cloudinary';
-import multer from "multer";
-
 
 cloudinary.v2.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -15,12 +13,6 @@ cloudinary.v2.config({
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true }));
-
-const upload = multer({
-  limits: { fileSize: 30 * 1024 * 1024 } // 30MB
-});
-
 
 /* ================= FIREBASE ================= */
 admin.initializeApp({
@@ -67,37 +59,22 @@ app.post("/upload-cover", async (req, res) => {
 });
 
 // رفع PDF
-app.post("/upload-pdf", upload.single("pdf"), async (req, res) => {
+app.post("/upload-pdf", async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No PDF uploaded" });
-    }
+    const { file } = req.body; // Base64
+    if (!file) return res.status(400).json({ error: "No file provided" });
 
-    cloudinary.v2.uploader.upload_stream(
-      {
-        folder: "books/pdfs",
-        resource_type: "raw",
-        format: "pdf"
-      },
-      (error, result) => {
-        if (error) {
-          console.error(error);
-          return res.status(500).json({ error: error.message });
-        }
+    const result = await cloudinary.v2.uploader.upload(file, {
+      folder: "books/pdfs",
+      resource_type: "raw"  // <-- هذا السطر مهم جداً
+    });
 
-        res.json({
-          success: true,
-          url: result.secure_url
-        });
-      }
-    ).end(req.file.buffer);
-
+    res.json({ success: true, url: result.secure_url });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
-
 
 
 /* ================= SAVE BOOK ================= */
@@ -468,11 +445,68 @@ app.post("/request-payout", async (req, res) => {
 });
 
 
+/* ================= START ================= */
+// حفظ الدفع كـ pending عند approve
+app.post("/approve-payment", async (req, res) => {
+  const { paymentId, bookId, userUid } = req.body;
+  if (!paymentId || !bookId || !userUid || !db) return res.status(400).json({ error: "missing data" });
+  try {
+    // حفظ الدفع المعلق في مجموعة جديدة
+    await db.collection("pendingPayments").doc(paymentId).set({ bookId, userUid, status: "pending", createdAt: Date.now() });
 
+    const response = await fetch(`https://api.minepi.com/v2/payments/${paymentId}/approve`, {
+      method: "POST",
+      headers: { Authorization: `Key ${PI_API_KEY}` }
+    });
+    if (!response.ok) throw new Error(await response.text());
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// إكمال الدفع (مع حذف من pending)
+app.post("/complete-payment", async (req, res) => {
+  const { paymentId, txid, bookId, userUid } = req.body;
+  if (!paymentId || !txid || !bookId || !userUid || !db) return res.status(400).json({ error: "missing data" });
+  try {
+    const response = await fetch(`https://api.minepi.com/v2/payments/${paymentId}/complete`, {
+      method: "POST",
+      headers: { Authorization: `Key ${PI_API_KEY}` },
+      body: JSON.stringify({ txid })
+    });
+    if (!response.ok) throw new Error(await response.text());
+
+    const bookRef = db.collection("books").doc(bookId);
+    await db.runTransaction(async (t) => {
+      t.update(bookRef, { salesCount: admin.firestore.FieldValue.increment(1) });
+      t.set(db.collection("purchases").doc(userUid).collection("books").doc(bookId), { purchasedAt: Date.now() });
+    });
+
+    // حذف الدفع من المعلقين بعد إكماله
+    await db.collection("pendingPayments").doc(paymentId).delete();
+
+    const bookSnap = await bookRef.get();
+    res.json({ success: true, pdfUrl: bookSnap.data().pdf });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// جلب الدفعات المعلقة للمستخدم (للحل التلقائي)
+app.get("/pending-payments", async (req, res) => {
+  const { userUid } = req.query;
+  if (!userUid || !db) return res.status(400).json({ success: false, error: "missing userUid" });
+  try {
+    const snap = await db.collection("pendingPayments").where("userUid", "==", userUid).get();
+    const pendingPayments = snap.docs.map(doc => ({ id: doc.id, bookId: doc.data().bookId }));
+    res.json({ success: true, pendingPayments });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
-
-
 
 
 
