@@ -406,9 +406,11 @@ const userUid = req.piUser.uid;
 });
 
 /* ================= SALES ================= */
-app.post("/my-sales", async (req, res) => {
+app.post("/my-sales", verifyPiToken, async (req, res) => {
+
   try {
-    const { username } = req.body;
+    const username = req.piUser.username;
+
     const snap = await db.collection("books").where("owner", "==", username).get();
     const books = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     res.json({ success: true, books });
@@ -431,9 +433,12 @@ app.post("/reset-sales", async (req, res) => {
   }
 });
 /* ================= PAYOUT REQUEST ================= */
-app.post("/request-payout", async (req, res) => {
+app.post("/request-payout", verifyPiToken, async (req, res) => {
+
   try {
-    const { username, walletAddress } = req.body;
+   const username = req.piUser.username;
+const { walletAddress } = req.body;
+
     if (!username || !walletAddress) {
       return res.status(400).json({ error: "Missing data" });
     }
@@ -497,6 +502,7 @@ app.post("/request-payout", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
+
 
 
 
