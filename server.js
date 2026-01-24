@@ -3,6 +3,8 @@ import admin from "firebase-admin";
 import fetch from "node-fetch";
 import cors from "cors";
 import cloudinary from 'cloudinary';
+import multer from "multer";
+
 
 cloudinary.v2.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -13,6 +15,10 @@ cloudinary.v2.config({
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
+const upload = multer({
+  limits: { fileSize: 30 * 1024 * 1024 } // 30MB
+});
+
 
 /* ================= FIREBASE ================= */
 admin.initializeApp({
@@ -59,22 +65,37 @@ app.post("/upload-cover", async (req, res) => {
 });
 
 // رفع PDF
-app.post("/upload-pdf", async (req, res) => {
+app.post("/upload-pdf", upload.single("pdf"), async (req, res) => {
   try {
-    const { file } = req.body; // Base64
-    if (!file) return res.status(400).json({ error: "No file provided" });
+    if (!req.file) {
+      return res.status(400).json({ error: "No PDF uploaded" });
+    }
 
-    const result = await cloudinary.v2.uploader.upload(file, {
-      folder: "books/pdfs",
-      resource_type: "raw"  // <-- هذا السطر مهم جداً
-    });
+    cloudinary.v2.uploader.upload_stream(
+      {
+        folder: "books/pdfs",
+        resource_type: "raw",
+        format: "pdf"
+      },
+      (error, result) => {
+        if (error) {
+          console.error(error);
+          return res.status(500).json({ error: error.message });
+        }
 
-    res.json({ success: true, url: result.secure_url });
+        res.json({
+          success: true,
+          url: result.secure_url
+        });
+      }
+    ).end(req.file.buffer);
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
+
 
 
 /* ================= SAVE BOOK ================= */
@@ -507,6 +528,7 @@ app.get("/pending-payments", async (req, res) => {
 });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
+
 
 
 
