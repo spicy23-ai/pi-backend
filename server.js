@@ -65,9 +65,12 @@ app.post("/upload-pdf", async (req, res) => {
     if (!file) return res.status(400).json({ error: "No file provided" });
 
     const result = await cloudinary.v2.uploader.upload(file, {
-      folder: "books/pdfs",
-      resource_type: "raw"  // <-- هذا السطر مهم جداً
-    });
+  folder: "books/pdfs",
+  resource_type: "raw",
+  public_id: `book_${Date.now()}`, // اسم الملف
+  format: "pdf"                    // ← هذا هو الحل
+});
+
 
     res.json({ success: true, url: result.secure_url });
   } catch (err) {
@@ -507,6 +510,7 @@ app.get("/pending-payments", async (req, res) => {
 });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
+
 
 
 
