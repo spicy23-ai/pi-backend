@@ -337,25 +337,44 @@ app.post("/my-purchases", async (req, res) => {
 });
 
 /* ================= GET PDF ================= */
+import https from "https";
+
 app.post("/get-pdf", async (req, res) => {
   try {
     const { bookId, userUid } = req.body;
 
-    const p = await db
+    const purchase = await db
       .collection("purchases")
       .doc(userUid)
       .collection("books")
       .doc(bookId)
       .get();
 
-    if (!p.exists) return res.status(403).json({ error: "Not purchased" });
+    if (!purchase.exists) {
+      return res.status(403).json({ error: "Not purchased" });
+    }
 
-    const book = await db.collection("books").doc(bookId).get();
-    res.json({ success: true, pdfUrl: book.data().pdf });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
+    const bookSnap = await db.collection("books").doc(bookId).get();
+    if (!bookSnap.exists) {
+      return res.status(404).json({ error: "Book not found" });
+    }
+
+    const pdfUrl = bookSnap.data().pdf;
+
+    // 🔴 إجبار المتصفح على فهم أنه PDF
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${bookId}.pdf"`);
+
+    https.get(pdfUrl, cloudRes => {
+      cloudRes.pipe(res);
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to download PDF" });
   }
 });
+
 
 /* ================= SALES ================= */
 app.post("/my-sales", async (req, res) => {
@@ -507,6 +526,7 @@ app.get("/pending-payments", async (req, res) => {
 });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
+
 
 
 
