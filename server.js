@@ -221,9 +221,11 @@ app.post("/approve-payment", verifyPiToken, async (req, res) => {
     const paymentData = await paymentRes.json();
 
     const bookId = paymentData.metadata?.bookId;
-    const userUid = paymentData.metadata?.userUid;
+const userUid = req.piUser.uid; // 🔐 من Pi token فقط
 
-    if (!bookId || !userUid) return res.status(400).json({ error: "Missing metadata in Pi payment" });
+if (!bookId)
+  return res.status(400).json({ error: "Missing bookId in payment" });
+
 
     // حفظ الدفع كـ pending
     await db.collection("pendingPayments").doc(paymentId).set({
@@ -505,6 +507,7 @@ const { walletAddress } = req.body;
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
+
 
 
 
