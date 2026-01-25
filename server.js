@@ -309,9 +309,11 @@ async function handlePendingPayment(paymentId) {
     if (!paymentData.txid) return;
 
     const bookId = paymentData.metadata?.bookId;
-    const userUid = paymentData.metadata?.userUid;
+if (!bookId) return;
 
-    if (!bookId || !userUid) return;
+// ❌ لا تستخدم metadata.userUid
+// هذه الدالة اختيارية أصلاً
+
 
     await fetch(`${PI_API_URL}/payments/${paymentId}/complete`, {
       method: "POST",
@@ -507,6 +509,7 @@ const { walletAddress } = req.body;
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
+
 
 
 
