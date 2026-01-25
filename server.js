@@ -427,18 +427,25 @@ app.post("/my-sales", verifyPiToken, async (req, res) => {
 });
 
 /* ================= RESET SALES ================= */
-app.post("/reset-sales", async (req, res) => {
+app.post("/reset-sales", verifyPiToken, async (req, res) => {
   try {
-    const { username } = req.body;
-    const snap = await db.collection("books").where("owner", "==", username).get();
+    const username = req.piUser.username;
+
+    const snap = await db
+      .collection("books")
+      .where("owner", "==", username)
+      .get();
+
     const batch = db.batch();
     snap.forEach(d => batch.update(d.ref, { salesCount: 0 }));
     await batch.commit();
+
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
+
 /* ================= PAYOUT REQUEST ================= */
 app.post("/request-payout", verifyPiToken, async (req, res) => {
 
@@ -509,6 +516,7 @@ const { walletAddress } = req.body;
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
+
 
 
 
