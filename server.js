@@ -513,9 +513,40 @@ const { walletAddress } = req.body;
 
 
 
+/* ================= GET SINGLE BOOK ================= */
+app.get("/book/:id", async (req, res) => {
+  try {
+    const doc = await db.collection("books").doc(req.params.id).get();
+
+    if (!doc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: "Book not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      book: {
+        id: doc.id,
+        ...doc.data()
+      }
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      error: "Server error"
+    });
+  }
+});
+
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
+
 
 
 
