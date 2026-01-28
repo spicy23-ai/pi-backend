@@ -408,15 +408,20 @@ app.post("/reset-sales", async (req, res) => {
 app.post("/request-payout", async (req, res) => {
   try {
     const { username, walletAddress } = req.body;
+
     if (!username || !walletAddress) {
       return res.status(400).json({ error: "Missing data" });
     }
 
-    const userRef = db.collection("users").doc(username);
-    const userSnap = await userRef.get();
+    // ✅ تحقق محفظة Pi
+    if (!isValidPiWallet(walletAddress)) {
+      return res.status(400).json({
+        error: "Invalid Pi wallet address. Address must be 56 characters."
+      });
+    }
 
-    // 🔹 جلب كتب المستخدم
-    const booksSnap = await db.collection("books")
+    const booksSnap = await db
+      .collection("books")
       .where("owner", "==", username)
       .get();
 
@@ -426,10 +431,7 @@ app.post("/request-payout", async (req, res) => {
     booksSnap.forEach(doc => {
       const book = doc.data();
       const sales = book.salesCount || 0;
-      const profit = sales * book.price * 0.7;
-      totalEarnings += profit;
-
-      // تصفير المبيعات
+      totalEarnings += sales * book.price * 0.7;
       batch.update(doc.ref, { salesCount: 0 });
     });
 
@@ -437,28 +439,17 @@ app.post("/request-payout", async (req, res) => {
       return res.status(400).json({ error: "Minimum payout is 5 Pi" });
     }
 
-    // 🔹 إنشاء طلب payout
     await db.collection("payout_requests").add({
       username,
       walletAddress,
       amount: Number(totalEarnings.toFixed(2)),
       status: "pending",
-      requestedAt: Date.now(),
-      approvedAt: null
+      requestedAt: Date.now()
     });
-
-    // 🔹 تحديث المستخدم فقط لإظهار آخر طلب
-    await userRef.set({
-      lastPayoutAt: Date.now(),
-      lastPayoutAmount: Number(totalEarnings.toFixed(2))
-    }, { merge: true });
 
     await batch.commit();
 
-    res.json({
-      success: true,
-      amount: Number(totalEarnings.toFixed(2))
-    });
+    res.json({ success: true, amount: totalEarnings.toFixed(2) });
 
   } catch (err) {
     console.error("Payout error:", err);
@@ -529,6 +520,7 @@ app.get("/pending-payments", async (req, res) => {
 });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
+
 
 
 
