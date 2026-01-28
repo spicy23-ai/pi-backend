@@ -11,7 +11,7 @@ cloudinary.v2.config({
 });
 /* ================= APP ================= */
 const app = express();
-import cors from "cors"; // تأكد أن هذا موجود في الأعلى
+
 
 // دومين موقعك فقط (ضع دومين موقعك هنا)
 const allowedOrigins = ["https://spicy23-ai.github.io"];
@@ -544,6 +544,7 @@ app.get("/pending-payments", async (req, res) => {
 });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
+
 
 
 
