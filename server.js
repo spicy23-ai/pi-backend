@@ -40,6 +40,25 @@ app.get("/books", async (_, res) => {
   }
 });
 
+
+// ================= GET SINGLE BOOK =================
+app.get("/book", async (req, res) => {
+  try {
+    const bookId = req.query.id;
+    if (!bookId) return res.status(400).json({ success: false, error: "Missing book ID" });
+
+    const doc = await db.collection("books").doc(bookId).get();
+    if (!doc.exists) return res.status(404).json({ success: false, error: "Book not found" });
+
+    res.json({ success: true, book: { id: doc.id, ...doc.data() } });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+
+
+
 /* ================= UPLOAD FILES ================= */
 // رفع صورة الغلاف
 app.post("/upload-cover", async (req, res) => {
@@ -510,6 +529,7 @@ app.get("/pending-payments", async (req, res) => {
 });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
+
 
 
 
