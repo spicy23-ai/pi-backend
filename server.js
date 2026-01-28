@@ -404,6 +404,13 @@ app.post("/reset-sales", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+
+/* ================= WALLET VALIDATION ================= */
+function isValidPiWallet(address) {
+  return typeof address === "string" && address.length === 56;
+}
+
 /* ================= PAYOUT REQUEST ================= */
 app.post("/request-payout", async (req, res) => {
   try {
@@ -520,6 +527,7 @@ app.get("/pending-payments", async (req, res) => {
 });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
+
 
 
 
