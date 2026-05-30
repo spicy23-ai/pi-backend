@@ -389,7 +389,37 @@ app.post("/save-wallet", async (req, res) => {
 
   try {
 
-    const { userUid, walletAddress } = req.body;
+    const { userUid, walletAddress, accessToken } = req.body;
+
+    if (!accessToken) {
+  return res.status(401).json({
+    error: "Missing access token"
+  });
+}
+
+const piAuth = await fetch(
+  "https://api.minepi.com/v2/me",
+  {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  }
+);
+
+if (!piAuth.ok) {
+  return res.status(401).json({
+    error: "Invalid access token"
+  });
+}
+
+const piUser = await piAuth.json();
+
+if (piUser.uid !== userUid) {
+  return res.status(403).json({
+    error: "User mismatch"
+  });
+}
 
     if (!userUid || !walletAddress) {
       return res.status(400).json({
@@ -426,30 +456,61 @@ app.post("/save-wallet", async (req, res) => {
 /* ================= PAYOUT REQUEST ================= */
 app.post("/request-payout", async (req, res) => {
   try {
-    const { userUid } = req.body;
 
-   if (!userUid) {
-      return res.status(400).json({ error: "Missing data" });
+    const { userUid, accessToken } = req.body;
+
+    if (!userUid || !accessToken) {
+      return res.status(400).json({
+        error: "Missing data"
+      });
     }
-const userDoc = await db
-  .collection("users")
-  .doc(userUid)
-  .get();
 
-if (!userDoc.exists) {
-  return res.status(404).json({
-    error: "User not found"
-  });
-}
+    // التحقق من هوية المستخدم مع Pi
+    const piAuth = await fetch(
+      "https://api.minepi.com/v2/me",
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      }
+    );
 
-const walletAddress =
-  userDoc.data().walletAddress;
+    if (!piAuth.ok) {
+      return res.status(401).json({
+        error: "Invalid access token"
+      });
+    }
 
-if (!walletAddress) {
-  return res.status(400).json({
-    error: "Wallet not configured"
-  });
-}
+    const piUser = await piAuth.json();
+
+    if (piUser.uid !== userUid) {
+      return res.status(403).json({
+        error: "User mismatch"
+      });
+    }
+
+    const userDoc = await db
+      .collection("users")
+      .doc(userUid)
+      .get();
+
+    if (!userDoc.exists) {
+      return res.status(404).json({
+        error: "User not found"
+      });
+    }
+
+    const walletAddress =
+      userDoc.data().walletAddress;
+
+    if (!walletAddress) {
+      return res.status(400).json({
+        error: "Wallet not configured"
+      });
+    }
+
+    
     // ✅ تحقق محفظة Pi
     
 
