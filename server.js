@@ -528,7 +528,9 @@ if (!bookId || !userUid) {
   
     const response = await fetch(`https://api.minepi.com/v2/payments/${paymentId}/complete`, {
       method: "POST",
-      headers: { Authorization: `Key ${PI_API_KEY}` },
+      headers: { Authorization: `Key ${PI_API_KEY}`,
+                "Content-Type": "application/json"
+               },
       body: JSON.stringify({ txid })
     });
     if (!response.ok) throw new Error(await response.text());
