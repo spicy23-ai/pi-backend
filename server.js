@@ -1,3 +1,4 @@
+import * as StellarSdk from "@stellar/stellar-sdk";
 import express from "express";
 import admin from "firebase-admin";
 import fetch from "node-fetch";
@@ -42,6 +43,19 @@ const db = admin.firestore();
 /* ================= PI ================= */
 const PI_API_KEY = process.env.PI_API_KEY;
 const PI_API_URL = "https://api.minepi.com/v2";
+
+/* ================= STELLAR ================= */
+const server = new StellarSdk.Horizon.Server(
+  "https://api.mainnet.minepi.com"
+);
+
+const APP_SECRET =
+  process.env.PI_WALLET_SECRET;
+
+const APP_KEYPAIR =
+  StellarSdk.Keypair.fromSecret(
+    APP_SECRET
+  );
 
 /* ================= ROOT ================= */
 app.get("/", (_, res) => res.send("Backend running"));
@@ -507,6 +521,43 @@ app.post("/get-wallet", async (req, res) => {
 });
 
 
+async function sendPi(destination, amount) {
+
+  const sourceAccount =
+    await server.loadAccount(
+      APP_KEYPAIR.publicKey()
+    );
+
+  const fee =
+    await server.fetchBaseFee();
+
+  const tx =
+    new StellarSdk.TransactionBuilder(
+      sourceAccount,
+      {
+        fee,
+        networkPassphrase:
+          "Pi Network"
+      }
+    )
+      .addOperation(
+        StellarSdk.Operation.payment({
+          destination,
+          asset:
+            StellarSdk.Asset.native(),
+          amount: amount.toString()
+        })
+      )
+      .setTimeout(60)
+      .build();
+
+  tx.sign(APP_KEYPAIR);
+
+  return await server.submitTransaction(
+    tx
+  );
+}
+
 /* ================= PAYOUT REQUEST ================= */
 app.post("/request-payout", async (req, res) => {
   try {
@@ -587,17 +638,29 @@ app.post("/request-payout", async (req, res) => {
       return res.status(400).json({ error: "Minimum payout is 5 Pi" });
     }
 
-    await db.collection("payout_requests").add({
+    const paymentResult =
+  await sendPi(
+    walletAddress,
+    totalEarnings.toFixed(2)
+  );
+
+await batch.commit();
+
+await db.collection("payouts").add({
   userUid,
-walletAddress,
-      amount: Number(totalEarnings.toFixed(2)),
-      status: "pending",
-      requestedAt: Date.now()
-    });
+  walletAddress,
+  amount: Number(
+    totalEarnings.toFixed(2)
+  ),
+  txid: paymentResult.hash,
+  paidAt: Date.now()
+});
 
-    await batch.commit();
-
-    res.json({ success: true, amount: totalEarnings.toFixed(2) });
+res.json({
+  success: true,
+  txid: paymentResult.hash,
+  amount: totalEarnings.toFixed(2)
+});
 
   } catch (err) {
     console.error("Payout error:", err);
