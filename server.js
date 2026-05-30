@@ -80,7 +80,13 @@ app.get("/book", async (req, res) => {
 // رفع صورة الغلاف
 app.post("/upload-cover", async (req, res) => {
   try {
-    const { file } = req.body; // file هنا Base64
+    const { file } = req.body;
+    if (!file.startsWith("data:image/")) {
+  return res.status(400).json({
+    error: "Only images allowed"
+  });
+}
+    // file هنا Base64
     if (!file) return res.status(400).json({ error: "No file provided" });
 
     const result = await cloudinary.v2.uploader.upload(file, {
@@ -97,7 +103,13 @@ app.post("/upload-cover", async (req, res) => {
 // رفع PDF
 app.post("/upload-pdf", async (req, res) => {
   try {
-    const { file } = req.body; // Base64
+    const { file } = req.body;
+    if (!file.startsWith("data:application/pdf")) {
+  return res.status(400).json({
+    error: "Only PDF files allowed"
+  });
+}
+    // Base64
     if (!file) return res.status(400).json({ error: "No file provided" });
 
     const result = await cloudinary.v2.uploader.upload(file, {
@@ -127,10 +139,31 @@ app.post("/save-book", async (req, res) => {
     if (!title || !price || !cover || !pdf || !owner || !ownerUid) {
       return res.status(400).json({ error: "Missing data" });
     }
+if (
+  typeof title !== "string" ||
+  typeof owner !== "string" ||
+  typeof ownerUid !== "string" ||
+  typeof cover !== "string" ||
+  typeof pdf !== "string"
+) {
+  return res.status(400).json({ error: "Invalid data" });
+}
 
+if (
+  !cover.includes("cloudinary.com") ||
+  !pdf.includes("cloudinary.com")
+) {
+  return res.status(400).json({ error: "Invalid file URLs" });
+}
+
+const bookPrice = Number(price);
+
+if (isNaN(bookPrice) || bookPrice <= 0) {
+  return res.status(400).json({ error: "Invalid price" });
+}
     const doc = await db.collection("books").add({
       title,
-      price: Number(price),
+      price: bookPrice,
       description: description || "",
       language: language || "",
       pageCount: pageCount || "Unknown",
@@ -152,6 +185,11 @@ app.post("/save-book", async (req, res) => {
 app.post("/rate-book", async (req, res) => {
   try {
     const { bookId, voteType, userUid } = req.body;
+
+    if (!["like", "dislike"].includes(voteType)) {
+  return res.status(400).json({ error: "Invalid vote" });
+}
+    
     if (!bookId || !voteType || !userUid) {
       return res.status(400).json({ error: "Missing data" });
     }
@@ -161,8 +199,13 @@ app.post("/rate-book", async (req, res) => {
       .doc(bookId)
       .collection("votes")
       .doc(userUid)
-      .set({ vote: voteType, votedAt: Date.now() });
-
+      .set(
+  {
+    vote: voteType,
+    votedAt: Date.now()
+  },
+  { merge: true }
+);
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -193,98 +236,6 @@ app.post("/book-ratings", async (req, res) => {
 
 /* ================= PAYMENTS ================= */
 
-// 🔹 approve-payment (بدون أي منطق إضافي)
-app.post("/approve-payment", async (req, res) => {
-  try {
-    const { paymentId } = req.body;
-    if (!paymentId) {
-      return res.status(400).json({ error: "Missing paymentId" });
-    }
-
-    const r = await fetch(`${PI_API_URL}/payments/${paymentId}/approve`, {
-      method: "POST",
-      headers: { Authorization: `Key ${PI_API_KEY}` }
-    });
-
-    if (!r.ok) throw new Error(await r.text());
-    res.json({ success: true });
-
-  } catch (e) {
-    console.error("Approve error:", e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
-
-
-// 🔹 complete-payment (النسخة الصحيحة)
-app.post("/complete-payment", async (req, res) => {
-  try {
-    const { paymentId, txid } = req.body;
-
-    if (!paymentId || !txid) {
-      return res.status(400).json({ error: "Missing payment data" });
-    }
-
-    // 1️⃣ جلب بيانات الدفع من Pi
-    const paymentRes = await fetch(`${PI_API_URL}/payments/${paymentId}`, {
-      method: "GET",
-      headers: { Authorization: `Key ${PI_API_KEY}` }
-    });
-
-    if (!paymentRes.ok) {
-      throw new Error(await paymentRes.text());
-    }
-
-    const paymentData = await paymentRes.json();
-
-    // 2️⃣ استخراج البيانات من metadata (مصدر موثوق)
-    const bookId = paymentData.metadata?.bookId;
-    const userUid = paymentData.metadata?.userUid;
-
-    if (!bookId || !userUid) {
-      throw new Error("Missing metadata from Pi payment");
-    }
-
-    // 3️⃣ إكمال الدفع
-    const completeRes = await fetch(`${PI_API_URL}/payments/${paymentId}/complete`, {
-      method: "POST",
-      headers: {
-        Authorization: `Key ${PI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ txid })
-    });
-
-    if (!completeRes.ok) {
-      throw new Error(await completeRes.text());
-    }
-
-    // 4️⃣ تحديث Firestore (transaction)
-    const bookRef = db.collection("books").doc(bookId);
-
-    await db.runTransaction(async (t) => {
-      t.update(bookRef, {
-        salesCount: admin.firestore.FieldValue.increment(1)
-      });
-
-      t.set(
-        db.collection("purchases")
-          .doc(userUid)
-          .collection("books")
-          .doc(bookId),
-        { purchasedAt: Date.now() }
-      );
-    });
-
-    // 5️⃣ إرسال رابط الكتاب
-    const bookSnap = await bookRef.get();
-    res.json({ success: true, pdfUrl: bookSnap.data().pdf });
-
-  } catch (e) {
-    console.error("Complete payment error:", e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
 
 
 // 🔹 معالجة الدفعات المعلقة (اختياري – لكنه آمن)
@@ -390,6 +341,9 @@ app.post("/get-pdf", async (req, res) => {
     if (!p.exists) return res.status(403).json({ error: "Not purchased" });
 
     const book = await db.collection("books").doc(bookId).get();
+    if (!book.exists) {
+  return res.status(404).json({ error: "Book not found" });
+}
     res.json({ success: true, pdfUrl: book.data().pdf });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -425,15 +379,14 @@ app.post("/reset-sales", async (req, res) => {
 
 /* ================= WALLET VALIDATION ================= */
 function isValidPiWallet(address) {
-  return typeof address === "string" && address.length === 56;
+  return /^[A-Z2-7]{56}$/.test(address);
 }
-
 /* ================= PAYOUT REQUEST ================= */
 app.post("/request-payout", async (req, res) => {
   try {
-    const { username, walletAddress } = req.body;
+    const { ownerUid, walletAddress } = req.body;
 
-    if (!username || !walletAddress) {
+    if (!ownerUid || !walletAddress) {
       return res.status(400).json({ error: "Missing data" });
     }
 
@@ -446,7 +399,7 @@ app.post("/request-payout", async (req, res) => {
 
     const booksSnap = await db
       .collection("books")
-      .where("owner", "==", username)
+      .where("ownerUid", "==", ownerUid)
       .get();
 
     let totalEarnings = 0;
@@ -464,7 +417,7 @@ app.post("/request-payout", async (req, res) => {
     }
 
     await db.collection("payout_requests").add({
-      username,
+  ownerUid,
       walletAddress,
       amount: Number(totalEarnings.toFixed(2)),
       status: "pending",
@@ -504,9 +457,34 @@ app.post("/approve-payment", async (req, res) => {
 
 // إكمال الدفع (مع حذف من pending)
 app.post("/complete-payment", async (req, res) => {
-  const { paymentId, txid, bookId, userUid } = req.body;
-  if (!paymentId || !txid || !bookId || !userUid || !db) return res.status(400).json({ error: "missing data" });
+  const { paymentId, txid } = req.body;
+  if (!paymentId || !txid || !db) return res.status(400).json({ error: "missing data" });
   try {
+
+    const paymentInfo = await fetch(
+  `${PI_API_URL}/payments/${paymentId}`,
+  {
+    method: "GET",
+    headers: {
+      Authorization: `Key ${PI_API_KEY}`
+    }
+  }
+);
+
+if (!paymentInfo.ok) {
+  throw new Error(await paymentInfo.text());
+}
+
+const paymentData = await paymentInfo.json();
+
+const bookId = paymentData.metadata?.bookId;
+const userUid = paymentData.metadata?.userUid;
+
+if (!bookId || !userUid) {
+  throw new Error("Missing payment metadata");
+}
+
+  
     const response = await fetch(`https://api.minepi.com/v2/payments/${paymentId}/complete`, {
       method: "POST",
       headers: { Authorization: `Key ${PI_API_KEY}` },
@@ -532,7 +510,7 @@ app.post("/complete-payment", async (req, res) => {
 
 // جلب الدفعات المعلقة للمستخدم (للحل التلقائي)
 app.get("/pending-payments", async (req, res) => {
-  const { userUid } = req.query;
+  const userUid = String(req.query.userUid || "");
   if (!userUid || !db) return res.status(400).json({ success: false, error: "missing userUid" });
   try {
     const snap = await db.collection("pendingPayments").where("userUid", "==", userUid).get();
