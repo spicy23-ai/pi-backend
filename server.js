@@ -80,8 +80,15 @@ app.get("/book", async (req, res) => {
 // رفع صورة الغلاف
 app.post("/upload-cover", async (req, res) => {
   try {
-    const { file } = req.body;
-    if (!file.startsWith("data:image/")) {
+   const { file } = req.body;
+
+if (!file) {
+  return res.status(400).json({
+    error: "No file provided"
+  });
+}
+
+if (!file.startsWith("data:image/")) {
   return res.status(400).json({
     error: "Only images allowed"
   });
@@ -103,8 +110,15 @@ app.post("/upload-cover", async (req, res) => {
 // رفع PDF
 app.post("/upload-pdf", async (req, res) => {
   try {
-    const { file } = req.body;
-    if (!file.startsWith("data:application/pdf")) {
+   const { file } = req.body;
+
+if (!file) {
+  return res.status(400).json({
+    error: "No file provided"
+  });
+}
+
+if (!file.startsWith("data:application/pdf")) {
   return res.status(400).json({
     error: "Only PDF files allowed"
   });
@@ -363,18 +377,6 @@ app.post("/my-sales", async (req, res) => {
 });
 
 /* ================= RESET SALES ================= */
-app.post("/reset-sales", async (req, res) => {
-  try {
-    const { username } = req.body;
-    const snap = await db.collection("books").where("owner", "==", username).get();
-    const batch = db.batch();
-    snap.forEach(d => batch.update(d.ref, { salesCount: 0 }));
-    await batch.commit();
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
 
 
 /* ================= WALLET VALIDATION ================= */
@@ -523,6 +525,25 @@ const userUid = paymentData.metadata?.userUid;
 
 if (!bookId || !userUid) {
   throw new Error("Missing payment metadata");
+}
+    const existingPurchase = await db
+  .collection("purchases")
+  .doc(userUid)
+  .collection("books")
+  .doc(bookId)
+  .get();
+
+if (existingPurchase.exists) {
+
+  const existingBook = await db
+    .collection("books")
+    .doc(bookId)
+    .get();
+
+  return res.json({
+    success: true,
+    pdfUrl: existingBook.data().pdf
+  });
 }
 
   
