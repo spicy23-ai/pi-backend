@@ -383,25 +383,61 @@ app.post("/my-sales", async (req, res) => {
 function isValidPiWallet(address) {
   return /^[A-Z2-7]{56}$/.test(address);
 }
+
+
+app.post("/save-wallet", async (req, res) => {
+
+  try {
+
+    const { userUid, walletAddress } = req.body;
+
+    if (!userUid || !walletAddress) {
+      return res.status(400).json({
+        error: "Missing data"
+      });
+    }
+
+    if (!isValidPiWallet(walletAddress)) {
+      return res.status(400).json({
+        error: "Invalid wallet"
+      });
+    }
+
+    await db.collection("users")
+      .doc(userUid)
+      .set(
+        { walletAddress },
+        { merge: true }
+      );
+
+    res.json({ success: true });
+
+  } catch (e) {
+
+    res.status(500).json({
+      error: e.message
+    });
+
+  }
+
+});
+
+
 /* ================= PAYOUT REQUEST ================= */
 app.post("/request-payout", async (req, res) => {
   try {
-    const { ownerUid, walletAddress } = req.body;
+    const { userUid } = req.body;
 
-    if (!ownerUid || !walletAddress) {
+   if (!userUid) {
       return res.status(400).json({ error: "Missing data" });
     }
 
     // ✅ تحقق محفظة Pi
-    if (!isValidPiWallet(walletAddress)) {
-      return res.status(400).json({
-        error: "Invalid Pi wallet address. Address must be 56 characters."
-      });
-    }
+    
 
     const booksSnap = await db
       .collection("books")
-      .where("ownerUid", "==", ownerUid)
+      .where("ownerUid", "==", userUid)
       .get();
 
     let totalEarnings = 0;
@@ -419,8 +455,8 @@ app.post("/request-payout", async (req, res) => {
     }
 
     await db.collection("payout_requests").add({
-  ownerUid,
-      walletAddress,
+  userUid,
+walletAddress,
       amount: Number(totalEarnings.toFixed(2)),
       status: "pending",
       requestedAt: Date.now()
