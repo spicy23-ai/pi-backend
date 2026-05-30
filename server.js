@@ -438,18 +438,58 @@ app.post("/request-payout", async (req, res) => {
 /* ================= START ================= */
 // حفظ الدفع كـ pending عند approve
 app.post("/approve-payment", async (req, res) => {
-  const { paymentId, bookId, userUid } = req.body;
-  if (!paymentId || !bookId || !userUid || !db) return res.status(400).json({ error: "missing data" });
-  try {
-    // حفظ الدفع المعلق في مجموعة جديدة
-    await db.collection("pendingPayments").doc(paymentId).set({ bookId, userUid, status: "pending", createdAt: Date.now() });
+  const { paymentId } = req.body;
 
-    const response = await fetch(`https://api.minepi.com/v2/payments/${paymentId}/approve`, {
-      method: "POST",
-      headers: { Authorization: `Key ${PI_API_KEY}` }
-    });
-    if (!response.ok) throw new Error(await response.text());
+  if (!paymentId) {
+    return res.status(400).json({ error: "missing paymentId" });
+  }
+
+  try {
+
+    const paymentInfo = await fetch(
+      `${PI_API_URL}/payments/${paymentId}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Key ${PI_API_KEY}`
+        }
+      }
+    );
+
+    const paymentData = await paymentInfo.json();
+
+    const bookId = paymentData.metadata?.bookId;
+    const userUid = paymentData.metadata?.userUid;
+
+    if (!bookId || !userUid) {
+      throw new Error("Missing metadata");
+    }
+
+    await db.collection("pendingPayments")
+      .doc(paymentId)
+      .set({
+        bookId,
+        userUid,
+        status: "pending",
+        createdAt: Date.now()
+      });
+
+    const response = await fetch(
+      `${PI_API_URL}/payments/${paymentId}/approve`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Key ${PI_API_KEY}`
+        }
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
     res.json({ success: true });
+
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -466,7 +506,8 @@ app.post("/complete-payment", async (req, res) => {
   {
     method: "GET",
     headers: {
-      Authorization: `Key ${PI_API_KEY}`
+      Authorization: `Key ${PI_API_KEY}`,
+      "Content-Type": "application/json"
     }
   }
 );
