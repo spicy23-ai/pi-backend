@@ -625,24 +625,36 @@ app.post("/request-payout", async (req, res) => {
       .get();
 
     let totalEarnings = 0;
-    const batch = db.batch();
 
-    booksSnap.forEach(doc => {
-      const book = doc.data();
-      const sales = book.salesCount || 0;
-      totalEarnings += sales * book.price * 0.7;
-      batch.update(doc.ref, { salesCount: 0 });
-    });
+const booksToReset = [];
+
+booksSnap.forEach(doc => {
+  const book = doc.data();
+  const sales = book.salesCount || 0;
+
+  totalEarnings += sales * book.price * 0.7;
+
+  booksToReset.push(doc.ref);
+});
 
     if (totalEarnings < 5) {
       return res.status(400).json({ error: "Minimum payout is 5 Pi" });
     }
 
-    const paymentResult =
+   const paymentResult =
   await sendPi(
     walletAddress,
     totalEarnings.toFixed(2)
   );
+
+// تصفير المبيعات بعد نجاح التحويل فقط
+const batch = db.batch();
+
+for (const ref of booksToReset) {
+  batch.update(ref, {
+    salesCount: 0
+  });
+}
 
 await batch.commit();
 
