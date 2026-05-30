@@ -526,25 +526,7 @@ const userUid = paymentData.metadata?.userUid;
 if (!bookId || !userUid) {
   throw new Error("Missing payment metadata");
 }
-    const existingPurchase = await db
-  .collection("purchases")
-  .doc(userUid)
-  .collection("books")
-  .doc(bookId)
-  .get();
-
-if (existingPurchase.exists) {
-
-  const existingBook = await db
-    .collection("books")
-    .doc(bookId)
-    .get();
-
-  return res.json({
-    success: true,
-    pdfUrl: existingBook.data().pdf
-  });
-}
+    
 
   
     const response = await fetch(`https://api.minepi.com/v2/payments/${paymentId}/complete`, {
