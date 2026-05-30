@@ -282,18 +282,25 @@ async function handlePendingPayment(paymentId) {
     const bookRef = db.collection("books").doc(bookId);
 
     await db.runTransaction(async (t) => {
-      t.update(bookRef, {
-        salesCount: admin.firestore.FieldValue.increment(1)
-      });
 
-      t.set(
-        db.collection("purchases")
-          .doc(userUid)
-          .collection("books")
-          .doc(bookId),
-        { purchasedAt: Date.now() }
-      );
+  const purchaseRef = db
+    .collection("purchases")
+    .doc(userUid)
+    .collection("books")
+    .doc(bookId);
+
+  const purchaseDoc = await t.get(purchaseRef);
+
+  if (!purchaseDoc.exists) {
+    t.update(bookRef, {
+      salesCount: admin.firestore.FieldValue.increment(1)
     });
+  }
+
+  t.set(purchaseRef, {
+    purchasedAt: Date.now()
+  });
+});
 
     console.log("✅ Pending payment resolved:", paymentId);
 
@@ -539,10 +546,26 @@ if (!bookId || !userUid) {
     if (!response.ok) throw new Error(await response.text());
 
     const bookRef = db.collection("books").doc(bookId);
-    await db.runTransaction(async (t) => {
-      t.update(bookRef, { salesCount: admin.firestore.FieldValue.increment(1) });
-      t.set(db.collection("purchases").doc(userUid).collection("books").doc(bookId), { purchasedAt: Date.now() });
+await db.runTransaction(async (t) => {
+
+  const purchaseRef = db
+    .collection("purchases")
+    .doc(userUid)
+    .collection("books")
+    .doc(bookId);
+
+  const purchaseDoc = await t.get(purchaseRef);
+
+  if (!purchaseDoc.exists) {
+    t.update(bookRef, {
+      salesCount: admin.firestore.FieldValue.increment(1)
     });
+  }
+
+  t.set(purchaseRef, {
+    purchasedAt: Date.now()
+  });
+});
 
     // حذف الدفع من المعلقين بعد إكماله
     await db.collection("pendingPayments").doc(paymentId).delete();
