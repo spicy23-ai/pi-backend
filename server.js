@@ -431,7 +431,25 @@ app.post("/request-payout", async (req, res) => {
    if (!userUid) {
       return res.status(400).json({ error: "Missing data" });
     }
+const userDoc = await db
+  .collection("users")
+  .doc(userUid)
+  .get();
 
+if (!userDoc.exists) {
+  return res.status(404).json({
+    error: "User not found"
+  });
+}
+
+const walletAddress =
+  userDoc.data().walletAddress;
+
+if (!walletAddress) {
+  return res.status(400).json({
+    error: "Wallet not configured"
+  });
+}
     // ✅ تحقق محفظة Pi
     
 
