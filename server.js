@@ -15,7 +15,7 @@ const app = express();
 
 
 // دومين موقعك فقط (ضع دومين موقعك هنا)
-const allowedOrigins = ["https://spicy23-ai.github.io"];
+const allowedOrigins = ["https://spicylibrary.space"];
 
 const corsOptions = {
   origin: function(origin, callback){
