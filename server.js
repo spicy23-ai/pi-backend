@@ -650,7 +650,37 @@ app.post("/request-payout", async (req, res) => {
         error: "Wallet not configured"
       });
     }
+// ===== PAYOUT LOCK =====
 
+const payoutLockRef = db
+  .collection("payoutLocks")
+  .doc(userUid);
+
+const existingLock =
+  await payoutLockRef.get();
+
+if (existingLock.exists) {
+
+  const createdAt =
+    existingLock.data().createdAt || 0;
+
+  const isLocked =
+    Date.now() - createdAt < 3 * 60 * 1000;
+
+  if (isLocked) {
+    return res.status(400).json({
+      error: "Payout already processing"
+    });
+  }
+
+  await payoutLockRef.delete();
+}
+
+await payoutLockRef.set({
+  createdAt: Date.now()
+});
+
+// ===== END LOCK =====
     
     // ✅ تحقق محفظة Pi
     
@@ -704,6 +734,8 @@ await db.collection("payouts").add({
   paidAt: Date.now()
 });
 
+  await payoutLockRef.delete();  
+    
 res.json({
   success: true,
   txid: paymentResult.hash,
@@ -711,6 +743,12 @@ res.json({
 });
 
   } catch (err) {
+    try {
+  await db
+    .collection("payoutLocks")
+    .doc(req.body.userUid)
+    .delete();
+} catch {}
     console.error("Payout error:", err);
     res.status(500).json({ error: "Server error" });
   }
