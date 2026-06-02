@@ -64,9 +64,10 @@ app.get("/", (_, res) => res.send("Backend running"));
 app.get("/books", async (_, res) => {
   try {
     const snap = await db
-      .collection("books")
-      .orderBy("createdAt", "desc")
-      .get();
+  .collection("books")
+  .where("approved", "==", true)
+  .orderBy("createdAt", "desc")
+  .get();
 
     const books = await Promise.all(
       snap.docs.map(async (doc) => {
@@ -115,8 +116,19 @@ app.get("/book", async (req, res) => {
     if (!bookId) return res.status(400).json({ success: false, error: "Missing book ID" });
 
     const doc = await db.collection("books").doc(bookId).get();
-    if (!doc.exists) return res.status(404).json({ success: false, error: "Book not found" });
+   if (!doc.exists) {
+  return res.status(404).json({
+    success: false,
+    error: "Book not found"
+  });
+}
 
+if (!doc.data().approved) {
+  return res.status(404).json({
+    success: false,
+    error: "Book not found"
+  });
+}
     res.json({ success: true, book: { id: doc.id, ...doc.data() } });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
@@ -254,18 +266,21 @@ if (isNaN(bookPrice) || bookPrice <= 0) {
   return res.status(400).json({ error: "Invalid price" });
 }
     const doc = await db.collection("books").add({
-      title,
-      price: bookPrice,
-      description: description || "",
-      language: language || "",
-      pageCount: pageCount || "Unknown",
-      cover,
-      pdf,
-      owner,
-      ownerUid,
-      salesCount: 0,
-      createdAt: Date.now()
-    });
+  title,
+  price: bookPrice,
+  description: description || "",
+  language: language || "",
+  pageCount: pageCount || "Unknown",
+  cover,
+  pdf,
+  owner,
+  ownerUid,
+  salesCount: 0,
+
+  approved: false, // ينتظر المراجعة
+
+  createdAt: Date.now()
+});
 
     res.json({ success: true, bookId: doc.id });
   } catch (e) {
