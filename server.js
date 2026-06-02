@@ -30,7 +30,7 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({ limit: "35mb" }));
 
 /* ================= FIREBASE ================= */
 admin.initializeApp({
@@ -131,7 +131,21 @@ app.get("/book", async (req, res) => {
 app.post("/upload-cover", async (req, res) => {
   try {
    const { file } = req.body;
+// حد أقصى 5MB للصور
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
+const base64Data = file.split(",")[1];
+
+const fileSize = Buffer.byteLength(
+  base64Data,
+  "base64"
+);
+
+if (fileSize > MAX_IMAGE_SIZE) {
+  return res.status(400).json({
+    error: "Image exceeds 5MB limit"
+  });
+}
 if (!file) {
   return res.status(400).json({
     error: "No file provided"
@@ -161,7 +175,21 @@ if (!file.startsWith("data:image/")) {
 app.post("/upload-pdf", async (req, res) => {
   try {
    const { file } = req.body;
+// حد أقصى 20MB
+const MAX_SIZE = 20 * 1024 * 1024;
 
+const base64Data = file.split(",")[1];
+
+const fileSize = Buffer.byteLength(
+  base64Data,
+  "base64"
+);
+
+if (fileSize > MAX_SIZE) {
+  return res.status(400).json({
+    error: "PDF exceeds 20MB limit"
+  });
+}
 if (!file) {
   return res.status(400).json({
     error: "No file provided"
