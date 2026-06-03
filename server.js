@@ -387,9 +387,7 @@ if (!pendingDoc.exists) {
 }
       
     await db.runTransaction(async (t) => {
-  const bookSnap = await t.get(bookRef);
-const price = Number(bookSnap.data().price || 0);
-
+  
 const bookSnap = await t.get(bookRef);
 const price = Number(bookSnap.data().price || 0);
 
