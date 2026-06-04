@@ -316,13 +316,47 @@ app.post("/my-notifications", async (req, res) => {
 app.post("/rate-book", async (req, res) => {
   try {
 
-    const { bookId, voteType, userUid } = req.body;
+    const {
+  bookId,
+  voteType,
+  userUid,
+  accessToken
+} = req.body;
 
-    if (!bookId || !voteType || !userUid) {
-      return res.status(400).json({
-        error: "Missing data"
-      });
+if (
+  !bookId ||
+  !voteType ||
+  !userUid ||
+  !accessToken
+) {
+  return res.status(400).json({
+    error: "Missing data"
+  });
+}
+
+    const piAuth = await fetch(
+  "https://api.minepi.com/v2/me",
+  {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`
     }
+  }
+);
+
+if (!piAuth.ok) {
+  return res.status(401).json({
+    error: "Invalid access token"
+  });
+}
+
+const piUser = await piAuth.json();
+
+if (piUser.uid !== userUid) {
+  return res.status(403).json({
+    error: "User mismatch"
+  });
+}
 
     const voteRef = db
       .collection("ratings")
