@@ -310,7 +310,34 @@ app.post("/my-notifications", async (req, res) => {
   }
 });
 
+app.post("/book-ratings", async (req,res) => {
+  try{
 
+    const { bookId, userUid } = req.body;
+
+    const voteDoc = await db
+      .collection("ratings")
+      .doc(bookId)
+      .collection("votes")
+      .doc(userUid)
+      .get();
+
+    res.json({
+      success:true,
+      userVote: voteDoc.exists
+        ? voteDoc.data().vote
+        : null
+    });
+
+  }catch(e){
+
+    res.status(500).json({
+      success:false,
+      error:e.message
+    });
+
+  }
+});
 
 /* ================= RATINGS ================= */
 app.post("/rate-book", async (req, res) => {
