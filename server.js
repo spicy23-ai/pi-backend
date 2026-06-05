@@ -1101,6 +1101,41 @@ app.get("/pending-payments", async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+
+app.post("/check-purchase", async (req, res) => {
+  try {
+
+    const { userUid, bookId } = req.body;
+
+    if (!userUid || !bookId) {
+      return res.status(400).json({
+        error: "Missing data"
+      });
+    }
+
+    const purchaseDoc = await db
+      .collection("purchases")
+      .doc(userUid)
+      .collection("books")
+      .doc(bookId)
+      .get();
+
+    res.json({
+      success: true,
+      purchased: purchaseDoc.exists
+    });
+
+  } catch (e) {
+
+    res.status(500).json({
+      error: e.message
+    });
+
+  }
+});
+
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Backend running on port", PORT));
 
