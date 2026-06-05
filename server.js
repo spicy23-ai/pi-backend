@@ -949,6 +949,20 @@ app.post("/approve-payment", async (req, res) => {
     const bookId = paymentData.metadata?.bookId;
     const userUid = paymentData.metadata?.userUid;
 
+    // منع شراء نفس الكتاب مرتين
+const existingPurchase = await db
+  .collection("purchases")
+  .doc(userUid)
+  .collection("books")
+  .doc(bookId)
+  .get();
+
+if (existingPurchase.exists) {
+  return res.status(400).json({
+    error: "Book already purchased"
+  });
+}
+    
     if (!bookId || !userUid) {
       throw new Error("Missing metadata");
     }
@@ -1025,24 +1039,44 @@ if (!bookId || !userUid) {
     if (!response.ok) throw new Error(await response.text());
 
     const bookRef = db.collection("books").doc(bookId);
-await db.runTransaction(async (t) => {
- const bookSnap = await t.get(bookRef);
-const price = Number(bookSnap.data().price || 0);
 
-t.update(bookRef, {
-  salesCount: admin.firestore.FieldValue.increment(1),
-  withdrawableEarnings:
-    admin.firestore.FieldValue.increment(
-      price * 0.7
-    )
-});
-  t.set(
-    db.collection("purchases")
-      .doc(userUid)
-      .collection("books")
-      .doc(bookId),
-    { purchasedAt: Date.now() }
-  );
+const purchaseRef = db
+  .collection("purchases")
+  .doc(userUid)
+  .collection("books")
+  .doc(bookId);
+
+await db.runTransaction(async (t) => {
+
+  const existingPurchase =
+    await t.get(purchaseRef);
+
+  if (existingPurchase.exists) {
+    throw new Error(
+      "Book already purchased"
+    );
+  }
+
+  const bookSnap =
+    await t.get(bookRef);
+
+  const price =
+    Number(bookSnap.data().price || 0);
+
+  t.update(bookRef, {
+    salesCount:
+      admin.firestore.FieldValue.increment(1),
+
+    withdrawableEarnings:
+      admin.firestore.FieldValue.increment(
+        price * 0.7
+      )
+  });
+
+  t.set(purchaseRef, {
+    purchasedAt: Date.now()
+  });
+
 });
 
     // حذف الدفع من المعلقين بعد إكماله
