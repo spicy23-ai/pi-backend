@@ -553,8 +553,8 @@ app.post("/my-purchases", async (req, res) => {
       .collection("purchases")
       .doc(userUid)
       .collection("books")
-      .get();
-
+.orderBy("purchasedAt", "desc")
+.get();
     const books = [];
     for (const d of snap.docs) {
       const b = await db.collection("books").doc(d.id).get();
