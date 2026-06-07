@@ -284,11 +284,35 @@ await db.doc("stats/platform").set(
 app.post("/my-notifications", async (req, res) => {
   try {
 
-    const { userUid } = req.body;
+    const { userUid, accessToken } = req.body;
 
-    if (!userUid) {
+    if (!userUid || !accessToken) {
       return res.status(400).json({
-        error: "Missing userUid"
+        error: "Missing data"
+      });
+    }
+
+    const piAuth = await fetch(
+      "https://api.minepi.com/v2/me",
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    if (!piAuth.ok) {
+      return res.status(401).json({
+        error: "Invalid access token"
+      });
+    }
+
+    const piUser = await piAuth.json();
+
+    if (piUser.uid !== userUid) {
+      return res.status(403).json({
+        error: "User mismatch"
       });
     }
 
@@ -321,8 +345,40 @@ app.post("/my-notifications", async (req, res) => {
 app.post("/book-ratings", async (req,res) => {
   try{
 
-    const { bookId, userUid } = req.body;
+    const { bookId, userUid, accessToken } = req.body;
 
+if (!bookId || !userUid || !accessToken) {
+  return res.status(400).json({
+    success: false,
+    error: "Missing data"
+  });
+}
+
+const piAuth = await fetch(
+  "https://api.minepi.com/v2/me",
+  {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  }
+);
+
+if (!piAuth.ok) {
+  return res.status(401).json({
+    success: false,
+    error: "Invalid access token"
+  });
+}
+
+const piUser = await piAuth.json();
+
+if (piUser.uid !== userUid) {
+  return res.status(403).json({
+    success: false,
+    error: "User mismatch"
+  });
+}
     const voteDoc = await db
       .collection("ratings")
       .doc(bookId)
@@ -548,29 +604,106 @@ app.post("/resolve-pending", async (req, res) => {
 /* ================= PURCHASES ================= */
 app.post("/my-purchases", async (req, res) => {
   try {
-    const { userUid } = req.body;
+
+    const { userUid, accessToken } = req.body;
+
+    if (!userUid || !accessToken) {
+      return res.status(400).json({
+        error: "Missing data"
+      });
+    }
+
+    const piAuth = await fetch(
+      "https://api.minepi.com/v2/me",
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    if (!piAuth.ok) {
+      return res.status(401).json({
+        error: "Invalid access token"
+      });
+    }
+
+    const piUser = await piAuth.json();
+
+    if (piUser.uid !== userUid) {
+      return res.status(403).json({
+        error: "User mismatch"
+      });
+    }
+
     const snap = await db
       .collection("purchases")
       .doc(userUid)
       .collection("books")
-.orderBy("purchasedAt", "desc")
-.get();
+      .orderBy("purchasedAt", "desc")
+      .get();
+
     const books = [];
+
     for (const d of snap.docs) {
       const b = await db.collection("books").doc(d.id).get();
-      if (b.exists) books.push({ id: b.id, ...b.data() });
+
+      if (b.exists) {
+        books.push({
+          id: b.id,
+          ...b.data()
+        });
+      }
     }
 
-    res.json({ success: true, books });
+    res.json({
+      success: true,
+      books
+    });
+
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({
+      error: e.message
+    });
   }
 });
 
 /* ================= GET PDF ================= */
 app.post("/get-pdf", async (req, res) => {
   try {
-    const { bookId, userUid } = req.body;
+
+    const { bookId, userUid, accessToken } = req.body;
+
+    if (!bookId || !userUid || !accessToken) {
+      return res.status(400).json({
+        error: "Missing data"
+      });
+    }
+
+    const piAuth = await fetch(
+      "https://api.minepi.com/v2/me",
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    if (!piAuth.ok) {
+      return res.status(401).json({
+        error: "Invalid access token"
+      });
+    }
+
+    const piUser = await piAuth.json();
+
+    if (piUser.uid !== userUid) {
+      return res.status(403).json({
+        error: "User mismatch"
+      });
+    }
 
     const p = await db
       .collection("purchases")
@@ -579,15 +712,29 @@ app.post("/get-pdf", async (req, res) => {
       .doc(bookId)
       .get();
 
-    if (!p.exists) return res.status(403).json({ error: "Not purchased" });
+    if (!p.exists) {
+      return res.status(403).json({
+        error: "Not purchased"
+      });
+    }
 
     const book = await db.collection("books").doc(bookId).get();
+
     if (!book.exists) {
-  return res.status(404).json({ error: "Book not found" });
-}
-    res.json({ success: true, pdfUrl: book.data().pdf });
+      return res.status(404).json({
+        error: "Book not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      pdfUrl: book.data().pdf
+    });
+
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({
+      error: e.message
+    });
   }
 });
 
@@ -1149,11 +1296,35 @@ app.get("/pending-payments", async (req, res) => {
 app.post("/check-purchase", async (req, res) => {
   try {
 
-    const { userUid, bookId } = req.body;
+    const { userUid, bookId, accessToken } = req.body;
 
-    if (!userUid || !bookId) {
+    if (!userUid || !bookId || !accessToken) {
       return res.status(400).json({
         error: "Missing data"
+      });
+    }
+
+    const piAuth = await fetch(
+      "https://api.minepi.com/v2/me",
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    if (!piAuth.ok) {
+      return res.status(401).json({
+        error: "Invalid access token"
+      });
+    }
+
+    const piUser = await piAuth.json();
+
+    if (piUser.uid !== userUid) {
+      return res.status(403).json({
+        error: "User mismatch"
       });
     }
 
