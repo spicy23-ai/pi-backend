@@ -216,9 +216,46 @@ if (!file.startsWith("data:application/pdf")) {
 app.post("/save-book", async (req, res) => {
   try {
     const {
-      title, price, description, language, pageCount,
-      cover, pdf, owner, ownerUid
-    } = req.body;
+  title,
+  price,
+  description,
+  language,
+  pageCount,
+  cover,
+  pdf,
+  owner,
+  ownerUid,
+  accessToken
+} = req.body;
+    if (!accessToken) {
+  return res.status(401).json({
+    error: "Missing access token"
+  });
+}
+
+const piAuth = await fetch(
+  "https://api.minepi.com/v2/me",
+  {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  }
+);
+
+if (!piAuth.ok) {
+  return res.status(401).json({
+    error: "Invalid access token"
+  });
+}
+
+const piUser = await piAuth.json();
+
+if (piUser.uid !== ownerUid) {
+  return res.status(403).json({
+    error: "User mismatch"
+  });
+}
 
     if (!title || !price || !cover || !pdf || !owner || !ownerUid) {
       return res.status(400).json({ error: "Missing data" });
@@ -253,8 +290,8 @@ if (isNaN(bookPrice) || bookPrice <= 0) {
   pageCount: pageCount || "Unknown",
   cover,
   pdf,
-  owner,
-  ownerUid,
+ owner: piUser.username,
+  ownerUid: piUser.uid,
       likes: 0,
 dislikes: 0,
   salesCount: 0,
@@ -741,15 +778,60 @@ app.post("/get-pdf", async (req, res) => {
 /* ================= SALES ================= */
 app.post("/my-sales", async (req, res) => {
   try {
-    const { username } = req.body;
-    const snap = await db.collection("books").where("owner", "==", username).get();
-    const books = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    res.json({ success: true, books });
+
+    const { userUid, accessToken } = req.body;
+
+    if (!userUid || !accessToken) {
+      return res.status(400).json({
+        error: "Missing data"
+      });
+    }
+
+    const piAuth = await fetch(
+      "https://api.minepi.com/v2/me",
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    if (!piAuth.ok) {
+      return res.status(401).json({
+        error: "Invalid access token"
+      });
+    }
+
+    const piUser = await piAuth.json();
+
+    if (piUser.uid !== userUid) {
+      return res.status(403).json({
+        error: "User mismatch"
+      });
+    }
+
+    const snap = await db
+      .collection("books")
+      .where("ownerUid", "==", userUid)
+      .get();
+
+    const books = snap.docs.map(d => ({
+      id: d.id,
+      ...d.data()
+    }));
+
+    res.json({
+      success: true,
+      books
+    });
+
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({
+      error: e.message
+    });
   }
 });
-
 /* ================= RESET SALES ================= */
 
 
