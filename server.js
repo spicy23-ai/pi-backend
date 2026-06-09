@@ -122,7 +122,41 @@ if (!doc.data().approved) {
 // رفع صورة الغلاف
 app.post("/upload-cover", async (req, res) => {
   try {
-   const { file } = req.body;
+   const {
+  file,
+  accessToken,
+  userUid
+} = req.body;
+
+if (!file || !accessToken || !userUid) {
+  return res.status(400).json({
+    error: "Missing data"
+  });
+}
+
+const piAuth = await fetch(
+  "https://api.minepi.com/v2/me",
+  {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  }
+);
+
+if (!piAuth.ok) {
+  return res.status(401).json({
+    error: "Invalid access token"
+  });
+}
+
+const piUser = await piAuth.json();
+
+if (piUser.uid !== userUid) {
+  return res.status(403).json({
+    error: "User mismatch"
+  });
+}
 // حد أقصى 5MB للصور
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
@@ -166,7 +200,41 @@ if (!file.startsWith("data:image/")) {
 // رفع PDF
 app.post("/upload-pdf", async (req, res) => {
   try {
-   const { file } = req.body;
+  const {
+  file,
+  accessToken,
+  userUid
+} = req.body;
+
+if (!file || !accessToken || !userUid) {
+  return res.status(400).json({
+    error: "Missing data"
+  });
+}
+
+const piAuth = await fetch(
+  "https://api.minepi.com/v2/me",
+  {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  }
+);
+
+if (!piAuth.ok) {
+  return res.status(401).json({
+    error: "Invalid access token"
+  });
+}
+
+const piUser = await piAuth.json();
+
+if (piUser.uid !== userUid) {
+  return res.status(403).json({
+    error: "User mismatch"
+  });
+}
 // حد أقصى 20MB
 const MAX_SIZE = 20 * 1024 * 1024;
 
