@@ -299,16 +299,35 @@ app.post("/save-book", async (req, res) => {
   ownerUid,
   accessToken
 } = req.body;
-    if (!accessToken) {
+if (!accessToken) {
   return res.status(401).json({
     error: "Missing access token"
   });
 }
 
-const piUser = await verifyPiUser(req, res);
+const piAuth = await fetch(
+  "https://api.minepi.com/v2/me",
+  {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  }
+);
 
-if (!piUser) return;
+if (!piAuth.ok) {
+  return res.status(401).json({
+    error: "Invalid access token"
+  });
+}
 
+const piUser = await piAuth.json();
+
+if (piUser.uid !== ownerUid) {
+  return res.status(403).json({
+    error: "User mismatch"
+  });
+}
     if (!title || !price || !cover || !pdf || !owner || !ownerUid) {
       return res.status(400).json({ error: "Missing data" });
     }
@@ -344,18 +363,22 @@ if (isNaN(bookPrice) || bookPrice <= 0) {
   pdf,
  owner: piUser.username,
   ownerUid: piUser.uid,
+
       likes: 0,
 dislikes: 0,
+      
   salesCount: 0,
 withdrawableEarnings: 0,
+ approved: false,
+  reviewed: false,
+  reviewMessage: "",
+ 
 
-  approved: false,
-reviewed: false,
-reviewMessage: "",
-createdAt: Date.now()
+  createdAt: Date.now()
 });
 
-await db.doc("stats/platform").set(
+
+    await db.doc("stats/platform").set(
   {
     totalBooks:
       admin.firestore.FieldValue.increment(1)
