@@ -183,7 +183,16 @@ if (!piUser) return;
 // حد أقصى 5MB للصور
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
-const base64Data = file.split(",")[1];
+const matches = file.match(/^data:(image\/\w+);base64,(.+)$/);
+
+if (!matches) {
+  return res.status(400).json({
+    success: false,
+    error: "Invalid image format"
+  });
+}
+
+const base64Data = matches[2];
 
 const fileSize = Buffer.byteLength(
   base64Data,
@@ -242,7 +251,16 @@ if (!piUser) return;
 // حد أقصى 20MB
 const MAX_SIZE = 20 * 1024 * 1024;
 
-const base64Data = file.split(",")[1];
+const matches = file.match(/^data:application\/pdf;base64,(.+)$/);
+
+if (!matches) {
+  return res.status(400).json({
+    success: false,
+    error: "Invalid PDF format"
+  });
+}
+
+const base64Data = matches[1];
 
 const fileSize = Buffer.byteLength(
   base64Data,
