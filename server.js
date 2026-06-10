@@ -927,6 +927,9 @@ async function sendPi(destination, amount) {
           "Pi Network"
       }
     )
+    .addMemo(
+  StellarSdk.Memo.text("Withdrawal - Spicy Library")
+)
       .addOperation(
         StellarSdk.Operation.payment({
           destination,
