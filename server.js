@@ -151,6 +151,13 @@ if (!doc.data().approved) {
     error: "Book not found"
   });
 }
+
+    res.set({
+  "Cache-Control": "no-store, no-cache, must-revalidate, private",
+  "Pragma": "no-cache",
+  "Expires": "0"
+});
+    
     res.json({ success: true, book: { id: doc.id, ...doc.data() } });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
@@ -579,6 +586,82 @@ if (!piUser) return;
     });
   }
 });
+
+
+/* ================= COMMENTS ================= */
+
+// إضافة تعليق
+app.post("/add-comment", async (req, res) => {
+  try {
+    const { bookId, userUid, accessToken, text } = req.body;
+
+    if (!bookId || !userUid || !accessToken || !text) {
+      return res.status(400).json({ error: "Missing data" });
+    }
+
+    const piUser = await verifyPiUser(req, res);
+    if (!piUser) return;
+
+  // التحقق هل المستخدم علق سابقاً
+const commentRef = db
+  .collection("books")
+  .doc(bookId)
+  .collection("comments")
+  .doc(userUid);
+
+const existingComment = await commentRef.get();
+
+if (existingComment.exists) {
+  return res.status(400).json({
+    success: false,
+    error: "You already commented on this book"
+  });
+}
+
+// إنشاء التعليق
+await commentRef.set({
+  userUid,
+  username: piUser.username,
+  text,
+  createdAt: Date.now()
+});
+
+return res.json({
+  success: true
+});
+
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
+
+// جلب التعليقات
+app.get("/comments", async (req, res) => {
+  try {
+    const bookId = req.query.bookId;
+
+    if (!bookId) {
+      return res.status(400).json({ error: "Missing bookId" });
+    }
+
+    const snap = await db
+      .collection("books")
+      .doc(bookId)
+      .collection("comments")
+      .orderBy("createdAt", "desc")
+      .get();
+
+    const comments = snap.docs.map(d => d.data());
+
+    res.json({ success: true, comments });
+
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 
 /* ================= PAYMENTS ================= */
 
