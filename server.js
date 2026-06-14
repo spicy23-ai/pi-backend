@@ -662,6 +662,40 @@ app.get("/comments", async (req, res) => {
   }
 });
 
+// التحقق هل المستخدم علق أم لا
+app.get("/has-comment", async (req, res) => {
+
+  try {
+
+    const { bookId, userUid } = req.query;
+
+    if (!bookId || !userUid) {
+      return res.status(400).json({
+        success: false
+      });
+    }
+
+    const doc = await db
+      .collection("books")
+      .doc(bookId)
+      .collection("comments")
+      .doc(userUid)
+      .get();
+
+    res.json({
+      success: true,
+      commented: doc.exists
+    });
+
+  } catch (e) {
+
+    res.status(500).json({
+      success: false
+    });
+
+  }
+
+});
 
 /* ================= PAYMENTS ================= */
 
