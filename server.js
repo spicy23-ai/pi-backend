@@ -1447,20 +1447,45 @@ app.get("/platform-stats", async (req,res) => {
 
   try {
 
-    const doc =
+    const statsDoc =
       await db.doc("stats/platform").get();
 
+    const stats =
+      statsDoc.exists
+        ? statsDoc.data()
+        : {};
+
+    const approvedBooks =
+      await db.collection("books")
+      .where("approved", "==", true)
+      .get();
+
+    const reviewedBooks =
+      await db.collection("books")
+      .where("reviewed", "==", true)
+      .get();
+
+    stats.approvedBooks =
+      approvedBooks.size;
+
+    stats.reviewedBooks =
+      reviewedBooks.size;
+
+
+    
+await db.doc("stats/platform").set({
+  approvedBooks: approvedBooks.size,
+  reviewedBooks: reviewedBooks.size
+}, { merge: true });
     res.json({
-      success:true,
-      stats: doc.exists
-        ? doc.data()
-        : {}
+      success: true,
+      stats
     });
 
   } catch(e){
 
     res.status(500).json({
-      error:e.message
+      error: e.message
     });
 
   }
