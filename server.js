@@ -25,6 +25,14 @@ function sanitizeText(text) {
   if (typeof text !== "string") return "";
   return text.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").trim();
 }
+function isCloudinaryUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname === "res.cloudinary.com";
+  } catch {
+    return false;
+  }
+}
 
 cloudinary.v2.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -118,7 +126,9 @@ app.post("/save-book", async (req,res) => {
     const piUser=await r.json();
     if(piUser.uid!==ownerUid) return res.status(403).json({error:"User mismatch"});
     if(!title||!price||!cover||!pdf||!owner||!ownerUid) return res.status(400).json({error:"Missing data"});
-    if(!cover.includes("cloudinary.com")||!pdf.includes("cloudinary.com")) return res.status(400).json({error:"Invalid URLs"});
+    if (!isCloudinaryUrl(cover) || !isCloudinaryUrl(pdf)) {
+  return res.status(400).json({ error: "Invalid URLs" });
+}
     // Rate limit: 5 كتب في الساعة
     if(rateLimit(`savebook_${piUser.uid}`, 5, 60*60*1000)) return res.status(429).json({error:"Too many uploads, wait an hour"});
     const bookPrice=Number(price);
