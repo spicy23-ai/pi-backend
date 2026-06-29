@@ -9,6 +9,23 @@ const require = createRequire(import.meta.url);
 const PiNetwork = require('pi-backend').default;
 const piSDK = new PiNetwork(process.env.PI_API_KEY, process.env.PI_WALLET_SECRET);
 
+/* ================= RATE LIMITER بسيط ================= */
+const rateLimitMap = new Map();
+function rateLimit(key, maxRequests = 10, windowMs = 60000) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(key) || { count: 0, start: now };
+  if (now - entry.start > windowMs) { entry.count = 0; entry.start = now; }
+  entry.count++;
+  rateLimitMap.set(key, entry);
+  return entry.count > maxRequests;
+}
+
+/* ================= تنظيف النصوص ================= */
+function sanitizeText(text) {
+  if (typeof text !== "string") return "";
+  return text.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").trim();
+}
+
 cloudinary.v2.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -16,7 +33,7 @@ cloudinary.v2.config({
 });
 
 const app = express();
-const allowedOrigins = ["https://spicylibrary.space"];
+const allowedOrigins = ["https://spicylibrary.online"];
 app.use(cors({
   origin: (origin, cb) => (!origin || allowedOrigins.includes(origin)) ? cb(null, true) : cb(new Error("Not allowed by CORS"))
 }));
@@ -32,6 +49,12 @@ const PI_API_URL = "https://api.minepi.com/v2";
 async function verifyPiUser(req, res) {
   const { accessToken, userUid } = req.body;
   if (!accessToken || !userUid) { res.status(400).json({ error: "Missing data" }); return null; }
+
+  // Rate limit: 30 طلب في الدقيقة لكل userUid
+  if (rateLimit(`auth_${userUid}`, 30, 60000)) {
+    res.status(429).json({ error: "Too many requests, please wait" }); return null;
+  }
+
   const r = await fetch("https://api.minepi.com/v2/me", { headers: { Authorization: `Bearer ${accessToken}` } });
   if (!r.ok) { res.status(401).json({ error: "Invalid access token" }); return null; }
   const piUser = await r.json();
@@ -96,10 +119,15 @@ app.post("/save-book", async (req,res) => {
     if(piUser.uid!==ownerUid) return res.status(403).json({error:"User mismatch"});
     if(!title||!price||!cover||!pdf||!owner||!ownerUid) return res.status(400).json({error:"Missing data"});
     if(!cover.includes("cloudinary.com")||!pdf.includes("cloudinary.com")) return res.status(400).json({error:"Invalid URLs"});
+    // Rate limit: 5 كتب في الساعة
+    if(rateLimit(`savebook_${piUser.uid}`, 5, 60*60*1000)) return res.status(429).json({error:"Too many uploads, wait an hour"});
     const bookPrice=Number(price);
     if(isNaN(bookPrice)||bookPrice<=0) return res.status(400).json({error:"Invalid price"});
+    // تنظيف النصوص
+    const cleanTitle = sanitizeText(title).substring(0, 200);
+    const cleanDesc = sanitizeText(description||"").substring(0, 2000);
     const doc=await db.collection("books").add({
-      title,price:bookPrice,description:description||"",language:language||"",
+      title:cleanTitle,price:bookPrice,description:cleanDesc,language:language||"",
       pageCount:pageCount||"Unknown",cover,pdf,
       owner:piUser.username,ownerUid:piUser.uid,
       likes:0,dislikes:0,salesCount:0,withdrawableEarnings:0,
@@ -155,11 +183,15 @@ app.post("/add-comment", async (req,res) => {
   try {
     const {bookId,userUid,accessToken,text}=req.body;
     if(!bookId||!userUid||!accessToken||!text) return res.status(400).json({error:"Missing data"});
+    if(text.length > 500) return res.status(400).json({error:"Comment too long (max 500 chars)"});
     const piUser=await verifyPiUser(req,res);
     if(!piUser) return;
+    // Rate limit: تعليق واحد كل دقيقة
+    if(rateLimit(`comment_${userUid}`, 5, 60000)) return res.status(429).json({error:"Too many comments, slow down"});
+    const cleanText = sanitizeText(text);
     const ref=db.collection("books").doc(bookId).collection("comments").doc(userUid);
     if((await ref.get()).exists) return res.status(400).json({success:false,error:"Already commented"});
-    await ref.set({userUid,username:piUser.username,text,createdAt:Date.now()});
+    await ref.set({userUid,username:piUser.username,text:cleanText,createdAt:Date.now()});
     res.json({success:true});
   } catch(e){ res.status(500).json({error:e.message}); }
 });
@@ -307,6 +339,10 @@ app.post("/request-payout", async (req,res) => {
   const {userUid,accessToken}=req.body;
   if(!userUid||!accessToken) return res.status(400).json({success:false,error:"Missing data"});
 
+  // Rate limit: طلب سحب واحد كل 5 دقائق
+  if(rateLimit(`payout_${userUid}`, 3, 5*60*1000))
+    return res.status(429).json({success:false,error:"Too many payout requests, wait 5 minutes"});
+
   const piUser = await verifyPiUser(req,res);
   if(!piUser) return;
 
@@ -325,9 +361,6 @@ app.post("/request-payout", async (req,res) => {
   const booksSnap = await db.collection("books").where("ownerUid","==",piUser.uid).get();
   let total = 0;
   booksSnap.forEach(d => { total += Number(d.data().withdrawableEarnings||0); });
-  console.log("Total earnings for user:", piUser.uid, "=", total);
-console.log("PI_API_KEY exists:", !!process.env.PI_API_KEY, "| PI_WALLET_SECRET exists:", !!process.env.PI_WALLET_SECRET);
-
   if(total < 5){
     await lockRef.delete();
     return res.status(400).json({success:false,error:"Minimum payout is 5 Pi"});
