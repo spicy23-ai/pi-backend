@@ -8,7 +8,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const PiNetwork = require('pi-backend').default;
 
-// ← Mainnet: المعاملان الإضافيان مطلوبان
+// Mainnet: المعاملان الإضافيان مطلوبان
 const piSDK = new PiNetwork(
   process.env.PI_API_KEY,
   process.env.PI_WALLET_SECRET,
@@ -345,7 +345,7 @@ app.get("/pending-payments", async (req, res) => {
   } catch(e){ res.status(500).json({ success: false, error: e.message }); }
 });
 
-/* ================= WALLET ================= */
+/* ================= WALLET (احتياطي) ================= */
 function isValidPiWallet(address) {
   return /^[A-Z2-7]{56}$/.test(address);
 }
@@ -374,7 +374,7 @@ app.post("/get-wallet", async (req, res) => {
 });
 
 /* ================================================================
- *  PAYOUT — A2U على Mainnet عبر pi-backend الرسمي
+ *  PAYOUT — A2U على Mainnet
  * ================================================================ */
 
 /* ── إلغاء الدفعات المعلقة ── */
@@ -391,9 +391,22 @@ async function cancelAllIncompletePi() {
   } catch(e) { console.warn("cancelAllIncompletePi error:", e.message); }
 }
 
+/* ── /cancel-incomplete-payouts ── */
+app.post("/cancel-incomplete-payouts", async (req, res) => {
+  const { userUid, accessToken } = req.body;
+  if (!userUid || !accessToken) return res.status(400).json({ error: "Missing data" });
+  if (!await verifyPiUser(req, res)) return;
+  try {
+    await cancelAllIncompletePi();
+    await db.collection("payoutLocks").doc(userUid).delete().catch(()=>{});
+    res.json({ success: true });
+  } catch(e){ res.status(500).json({ success: false, error: e.message }); }
+});
+
+/* ── /request-payout ── */
 app.post("/request-payout", async (req, res) => {
   const { userUid, accessToken, walletAddress } = req.body;
-  if (!userUid || !accessToken) 
+  if (!userUid || !accessToken)
     return res.status(400).json({ success: false, error: "Missing data" });
 
   const piUser = await verifyPiUser(req, res);
@@ -406,9 +419,9 @@ app.post("/request-payout", async (req, res) => {
   const lockRef = db.collection("payoutLocks").doc(piUser.uid);
   const lock = await lockRef.get();
   if (lock.exists && Date.now() - lock.data().createdAt < 3 * 60 * 1000) {
-    return res.status(400).json({ 
-      success: false, 
-      error: "Payout already processing, please wait 3 minutes" 
+    return res.status(400).json({
+      success: false,
+      error: "Payout already processing, please wait 3 minutes"
     });
   }
   await lockRef.delete().catch(()=>{});
@@ -426,7 +439,7 @@ app.post("/request-payout", async (req, res) => {
   }
   const amount = parseFloat(total.toFixed(7));
 
-  // 4. حفظ عنوان المحفظة إذا أُرسل (للرجوع إليه لاحقاً)
+  // 4. حفظ عنوان المحفظة إذا أُرسل من Pi SDK
   if (walletAddress) {
     await db.collection("users").doc(piUser.uid)
       .set({ walletAddress }, { merge: true })
@@ -439,17 +452,17 @@ app.post("/request-payout", async (req, res) => {
     paymentId = await piSDK.createPayment({
       amount,
       memo: "Spicy Library - Author Earnings Payout",
-      metadata: { 
-        type: "payout", 
-        userUid: piUser.uid, 
-        username: piUser.username 
+      metadata: {
+        type: "payout",
+        userUid: piUser.uid,
+        username: piUser.username
       },
       uid: piUser.uid
     });
 
     console.log("Payment created:", paymentId);
 
-    // 6. إرسال على البلوكشين
+    // 6. إرسال المعاملة على البلوكشين
     const txid = await piSDK.submitPayment(paymentId);
     console.log("Submitted txid:", txid);
 
@@ -457,13 +470,13 @@ app.post("/request-payout", async (req, res) => {
     const completed = await piSDK.completePayment(paymentId, txid);
     console.log("Payout completed:", completed.status);
 
-    // 8. تصفير الأرباح
+    // 8. تصفير الأرباح في Firestore
     const batch = db.batch();
     booksSnap.forEach(d => batch.update(d.ref, { withdrawableEarnings: 0 }));
     await batch.commit();
 
-    await db.collection("payouts").add({ 
-      userUid: piUser.uid, amount, txid, paymentId, paidAt: Date.now() 
+    await db.collection("payouts").add({
+      userUid: piUser.uid, amount, txid, paymentId, paidAt: Date.now()
     });
     await db.doc("stats/platform").set(
       { totalPayouts: admin.firestore.FieldValue.increment(amount) },
@@ -477,10 +490,10 @@ app.post("/request-payout", async (req, res) => {
     console.error("Payout error:", err.message);
     await lockRef.delete().catch(()=>{});
     if (paymentId) {
-      try { 
-        await piSDK.cancelPayment(paymentId); 
-      } catch(ce) { 
-        console.warn("Cancel failed:", ce.message); 
+      try {
+        await piSDK.cancelPayment(paymentId);
+      } catch(ce) {
+        console.warn("Cancel failed:", ce.message);
       }
     }
     return res.status(500).json({ success: false, error: err.message });
