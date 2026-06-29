@@ -325,6 +325,9 @@ app.post("/request-payout", async (req,res) => {
   const booksSnap = await db.collection("books").where("ownerUid","==",piUser.uid).get();
   let total = 0;
   booksSnap.forEach(d => { total += Number(d.data().withdrawableEarnings||0); });
+  console.log("Total earnings for user:", piUser.uid, "=", total);
+console.log("PI_API_KEY exists:", !!process.env.PI_API_KEY, "| PI_WALLET_SECRET exists:", !!process.env.PI_WALLET_SECRET);
+
   if(total < 5){
     await lockRef.delete();
     return res.status(400).json({success:false,error:"Minimum payout is 5 Pi"});
