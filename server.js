@@ -391,10 +391,10 @@ async function cancelAllIncompletePi() {
   } catch(e) { console.warn("cancelAllIncompletePi error:", e.message); }
 }
 
-/* ── /request-payout ── */
 app.post("/request-payout", async (req, res) => {
-  const { userUid, accessToken } = req.body;
-  if (!userUid || !accessToken) return res.status(400).json({ success: false, error: "Missing data" });
+  const { userUid, accessToken, walletAddress } = req.body;
+  if (!userUid || !accessToken) 
+    return res.status(400).json({ success: false, error: "Missing data" });
 
   const piUser = await verifyPiUser(req, res);
   if (!piUser) return;
@@ -406,45 +406,69 @@ app.post("/request-payout", async (req, res) => {
   const lockRef = db.collection("payoutLocks").doc(piUser.uid);
   const lock = await lockRef.get();
   if (lock.exists && Date.now() - lock.data().createdAt < 3 * 60 * 1000) {
-    return res.status(400).json({ success: false, error: "Payout already processing, please wait 3 minutes" });
+    return res.status(400).json({ 
+      success: false, 
+      error: "Payout already processing, please wait 3 minutes" 
+    });
   }
   await lockRef.delete().catch(()=>{});
   await lockRef.set({ createdAt: Date.now() });
 
   // 3. حساب الأرباح
-  const booksSnap = await db.collection("books").where("ownerUid","==",piUser.uid).get();
+  const booksSnap = await db.collection("books")
+    .where("ownerUid", "==", piUser.uid).get();
   let total = 0;
   booksSnap.forEach(d => { total += Number(d.data().withdrawableEarnings || 0); });
+
   if (total < 5) {
     await lockRef.delete();
     return res.status(400).json({ success: false, error: "Minimum payout is 5 Pi" });
   }
   const amount = parseFloat(total.toFixed(7));
 
+  // 4. حفظ عنوان المحفظة إذا أُرسل (للرجوع إليه لاحقاً)
+  if (walletAddress) {
+    await db.collection("users").doc(piUser.uid)
+      .set({ walletAddress }, { merge: true })
+      .catch(()=>{});
+  }
+
   let paymentId = null;
   try {
-    // 4. إنشاء الدفعة A2U
+    // 5. إنشاء الدفعة A2U
     paymentId = await piSDK.createPayment({
       amount,
       memo: "Spicy Library - Author Earnings Payout",
-      metadata: { type: "payout", userUid: piUser.uid, username: piUser.username },
+      metadata: { 
+        type: "payout", 
+        userUid: piUser.uid, 
+        username: piUser.username 
+      },
       uid: piUser.uid
     });
 
-    // 5. إرسال المعاملة على البلوكشين
+    console.log("Payment created:", paymentId);
+
+    // 6. إرسال على البلوكشين
     const txid = await piSDK.submitPayment(paymentId);
+    console.log("Submitted txid:", txid);
 
-    // 6. إكمال الدفعة
-    const completedPayment = await piSDK.completePayment(paymentId, txid);
-    console.log("Payout completed:", completedPayment.status);
+    // 7. إكمال الدفعة
+    const completed = await piSDK.completePayment(paymentId, txid);
+    console.log("Payout completed:", completed.status);
 
-    // 7. تصفير الأرباح
+    // 8. تصفير الأرباح
     const batch = db.batch();
     booksSnap.forEach(d => batch.update(d.ref, { withdrawableEarnings: 0 }));
     await batch.commit();
 
-    await db.collection("payouts").add({ userUid: piUser.uid, amount, txid, paymentId, paidAt: Date.now() });
-    await db.doc("stats/platform").set({ totalPayouts: admin.firestore.FieldValue.increment(amount) }, { merge: true });
+    await db.collection("payouts").add({ 
+      userUid: piUser.uid, amount, txid, paymentId, paidAt: Date.now() 
+    });
+    await db.doc("stats/platform").set(
+      { totalPayouts: admin.firestore.FieldValue.increment(amount) },
+      { merge: true }
+    );
     await lockRef.delete().catch(()=>{});
 
     return res.json({ success: true, txid, amount });
@@ -453,7 +477,11 @@ app.post("/request-payout", async (req, res) => {
     console.error("Payout error:", err.message);
     await lockRef.delete().catch(()=>{});
     if (paymentId) {
-      try { await piSDK.cancelPayment(paymentId); } catch(ce) { console.warn("Cancel failed:", ce.message); }
+      try { 
+        await piSDK.cancelPayment(paymentId); 
+      } catch(ce) { 
+        console.warn("Cancel failed:", ce.message); 
+      }
     }
     return res.status(500).json({ success: false, error: err.message });
   }
