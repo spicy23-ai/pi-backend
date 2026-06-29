@@ -33,7 +33,7 @@ cloudinary.v2.config({
 });
 
 const app = express();
-const allowedOrigins = ["https://spicylibrary.online"];
+const allowedOrigins = ["https://spicylibrary.space"];
 app.use(cors({
   origin: (origin, cb) => (!origin || allowedOrigins.includes(origin)) ? cb(null, true) : cb(new Error("Not allowed by CORS"))
 }));
