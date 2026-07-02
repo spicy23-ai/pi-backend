@@ -312,8 +312,9 @@ app.get("/pending-payments", async (req,res) => {
 /* ── إلغاء الدفعات المعلقة ── */
 async function cancelAllIncompletePi() {
   try {
-    const payments = await piSDK.getIncompleteServerPayments();
-    for (const p of payments) {
+    const result = await piSDK.getIncompleteServerPayments();
+const payments = result?.incomplete_server_payments || [];
+for (const p of payments) {
       await piSDK.cancelPayment(p.identifier);
       console.log(`Cancelled: ${p.identifier}`);
       if (p.metadata?.userUid) {
