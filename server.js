@@ -139,6 +139,34 @@ app.post("/save-book", async (req,res) => {
   } catch(e){ res.status(500).json({error:e.message}); }
 });
 
+/* ================= USER TRACKING ================= */
+app.post("/register-user", async (req,res) => {
+  try {
+    const { userUid, accessToken, username } = req.body;
+    if(!userUid || !accessToken) return res.status(400).json({success:false, error:"Missing data"});
+    if(!await verifyPiUser(req,res)) return;
+
+    const userRef = db.collection("users").doc(userUid);
+    const userDoc = await userRef.get();
+
+    if(!userDoc.exists){
+      await userRef.set({
+        username: username || "",
+        firstLoginAt: Date.now(),
+        lastLoginAt: Date.now()
+      });
+      await db.doc("stats/platform").set(
+        { totalUsers: admin.firestore.FieldValue.increment(1) },
+        { merge: true }
+      );
+    } else {
+      await userRef.update({ lastLoginAt: Date.now() });
+    }
+
+    res.json({ success:true });
+  } catch(e){ res.status(500).json({success:false, error:e.message}); }
+});
+
 app.post("/my-notifications", async (req,res) => {
   try {
     const {userUid,accessToken}=req.body;
