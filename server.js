@@ -123,7 +123,7 @@ app.post("/save-book", async (req,res) => {
     // Rate limit: 5 كتب في الساعة
     if(rateLimit(`savebook_${piUser.uid}`, 5, 60*60*1000)) return res.status(429).json({error:"Too many uploads, wait an hour"});
     const bookPrice=Number(price);
-    if(isNaN(bookPrice)||bookPrice<=0) return res.status(400).json({error:"Invalid price"});
+    if(isNaN(bookPrice)||bookPrice<0.0000001) return res.status(400).json({error:"Invalid price"});
     // تنظيف النصوص
     const cleanTitle = sanitizeText(title).substring(0, 200);
     const cleanDesc = sanitizeText(description||"").substring(0, 2000);
