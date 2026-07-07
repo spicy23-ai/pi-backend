@@ -164,6 +164,17 @@ app.post("/edit-book", async (req,res) => {
   } catch(e){ res.status(500).json({error:e.message}); }
 });
 
+function extractCloudinaryPublicId(url){
+  try{
+    const parts=url.split("/upload/");
+    if(parts.length<2) return null;
+    let path=parts[1];
+    path=path.replace(/^v\d+\//,"");
+    path=path.replace(/\.[a-zA-Z0-9]+$/,"");
+    return path;
+  }catch{ return null; }
+}
+
 app.post("/delete-book", async (req,res) => {
   try {
     const {bookId,userUid,accessToken}=req.body;
@@ -172,7 +183,21 @@ app.post("/delete-book", async (req,res) => {
     const bookRef=db.collection("books").doc(bookId);
     const book=await bookRef.get();
     if(!book.exists) return res.status(404).json({error:"Book not found"});
-    if(book.data().ownerUid!==userUid) return res.status(403).json({error:"Not your book"});
+    const bookData=book.data();
+    if(bookData.ownerUid!==userUid) return res.status(403).json({error:"Not your book"});
+
+    const coverPublicId=extractCloudinaryPublicId(bookData.cover||"");
+    const pdfPublicId=extractCloudinaryPublicId(bookData.pdf||"");
+
+    if(coverPublicId){
+      try{ await cloudinary.v2.uploader.destroy(coverPublicId,{resource_type:"image"}); }
+      catch(e){ console.warn("Cover delete failed:",e.message); }
+    }
+    if(pdfPublicId){
+      try{ await cloudinary.v2.uploader.destroy(pdfPublicId,{resource_type:"raw"}); }
+      catch(e){ console.warn("PDF delete failed:",e.message); }
+    }
+
     await bookRef.delete();
     res.json({success:true});
   } catch(e){ res.status(500).json({error:e.message}); }
