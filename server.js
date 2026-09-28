@@ -327,6 +327,13 @@ app.post("/complete-payment", async (req,res) => {
     const paymentData=await(await fetch(`${PI_API_URL}/payments/${paymentId}`,{headers:{Authorization:`Key ${PI_API_KEY}`,"Content-Type":"application/json"}})).json();
     const {bookId,userUid}=paymentData.metadata||{};
     if(!bookId||!userUid) throw new Error("Missing metadata");
+
+    const bookCheck=await db.collection("books").doc(bookId).get();
+    if(!bookCheck.exists||!bookCheck.data().approved) throw new Error("Book not found");
+    if(Math.abs(Number(paymentData.amount)-Number(bookCheck.data().price))>0.0000001)
+      throw new Error("Amount mismatch");
+    
+    
     const r=await fetch(`${PI_API_URL}/payments/${paymentId}/complete`,{method:"POST",headers:{Authorization:`Key ${PI_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({txid})});
     if(!r.ok) throw new Error(await r.text());
     const bookRef=db.collection("books").doc(bookId);
