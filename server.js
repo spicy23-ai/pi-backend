@@ -128,8 +128,8 @@ app.post("/save-book", async (req,res) => {
     const cleanTitle = sanitizeText(title).substring(0, 200);
     const cleanDesc = sanitizeText(description||"").substring(0, 2000);
     const doc=await db.collection("books").add({
-      title:cleanTitle,price:bookPrice,description:cleanDesc,language:language||"",
-      pageCount:pageCount||"Unknown",cover,pdf,
+      title:cleanTitle,price:bookPrice,description:cleanDesc,language:sanitizeText(language||"").substring(0,30),
+      pageCount:sanitizeText(String(pageCount||"Unknown")).substring(0,10),cover,pdf,
       owner:piUser.username,ownerUid:piUser.uid,
       likes:0,dislikes:0,salesCount:0,withdrawableEarnings:0,
       approved:false,reviewed:false,reviewMessage:"",createdAt:Date.now()
@@ -152,8 +152,8 @@ app.post("/edit-book", async (req,res) => {
     const updates={};
     if(title) updates.title=sanitizeText(title).substring(0,200);
     if(description) updates.description=sanitizeText(description).substring(0,2000);
-    if(language) updates.language=language;
-    if(pageCount) updates.pageCount=pageCount;
+    if(language) updates.language=sanitizeText(language).substring(0,30);
+if(pageCount) updates.pageCount=sanitizeText(String(pageCount)).substring(0,10);
     if(price!==undefined){
       const p=Number(price);
       if(isNaN(p)||p<0.0000001) return res.status(400).json({error:"Invalid price"});
@@ -311,6 +311,12 @@ app.post("/approve-payment", async (req,res) => {
     const paymentData=await(await fetch(`${PI_API_URL}/payments/${paymentId}`,{headers:{Authorization:`Key ${PI_API_KEY}`}})).json();
     const {bookId,userUid}=paymentData.metadata||{};
     if(!bookId||!userUid) throw new Error("Missing metadata");
+
+    const bookCheck=await db.collection("books").doc(bookId).get();
+    if(!bookCheck.exists||!bookCheck.data().approved) throw new Error("Book not found");
+    if(Math.abs(Number(paymentData.amount)-Number(bookCheck.data().price))>0.0000001)
+      throw new Error("Amount mismatch");
+    
     if((await db.collection("purchases").doc(userUid).collection("books").doc(bookId).get()).exists)
       return res.status(400).json({error:"Already purchased"});
     await db.collection("pendingPayments").doc(paymentId).set({bookId,userUid,status:"pending",createdAt:Date.now()});
@@ -452,11 +458,14 @@ app.post("/request-payout", async (req,res) => {
 
   // 2. قفل لمنع طلبين متزامنين
   const lockRef = db.collection("payoutLocks").doc(piUser.uid);
-  const lock = await lockRef.get();
-  if(lock.exists && Date.now()-lock.data().createdAt < 3*60*1000)
+  let locked=false;
+  await db.runTransaction(async t=>{
+    const l=await t.get(lockRef);
+    if(l.exists && Date.now()-l.data().createdAt < 3*60*1000){ locked=true; return; }
+    t.set(lockRef,{createdAt:Date.now()});
+  });
+  if(locked)
     return res.status(400).json({success:false,error:"Payout already processing, please wait 3 minutes"});
-  await lockRef.delete().catch(()=>{});
-  await lockRef.set({createdAt:Date.now()});
 
   // 3. حساب الأرباح
   const booksSnap = await db.collection("books").where("ownerUid","==",piUser.uid).get();
