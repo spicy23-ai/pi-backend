@@ -25,7 +25,7 @@ function sanitizeText(text) {
   if (typeof text !== "string") return "";
   return text.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").trim();
 }
-
+const ALLOWED_CATEGORIES = ["novels","poetry","education","science","technology","business","selfdev","history","religion","health","children","art","cooking","other"];
 cloudinary.v2.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -111,13 +111,14 @@ app.post("/upload-pdf", async (req,res) => {
 
 app.post("/save-book", async (req,res) => {
   try {
-    const {title,price,description,language,pageCount,cover,pdf,owner,ownerUid,accessToken}=req.body;
+    const {title,price,description,language,category,pageCount,cover,pdf,owner,ownerUid,accessToken}=req.body;
     if(!accessToken) return res.status(401).json({error:"Missing token"});
     const r=await fetch("https://api.minepi.com/v2/me",{headers:{Authorization:`Bearer ${accessToken}`}});
     if(!r.ok) return res.status(401).json({error:"Invalid token"});
     const piUser=await r.json();
     if(piUser.uid!==ownerUid) return res.status(403).json({error:"User mismatch"});
     if(!title||!price||!cover||!pdf||!owner||!ownerUid) return res.status(400).json({error:"Missing data"});
+    if(!ALLOWED_CATEGORIES.includes(category)) return res.status(400).json({error:"Invalid category"});
     if(!cover.includes("cloudinary.com")||!pdf.includes("cloudinary.com"))
   return res.status(400).json({error:"Invalid URLs"});
     // Rate limit: 5 كتب في الساعة
@@ -128,7 +129,7 @@ app.post("/save-book", async (req,res) => {
     const cleanTitle = sanitizeText(title).substring(0, 200);
     const cleanDesc = sanitizeText(description||"").substring(0, 2000);
     const doc=await db.collection("books").add({
-      title:cleanTitle,price:bookPrice,description:cleanDesc,language:sanitizeText(language||"").substring(0,30),
+      title:cleanTitle,category,price:bookPrice,description:cleanDesc,language:sanitizeText(language||"").substring(0,30),
       pageCount:sanitizeText(String(pageCount||"Unknown")).substring(0,10),cover,pdf,
       owner:piUser.username,ownerUid:piUser.uid,
       likes:0,dislikes:0,salesCount:0,withdrawableEarnings:0,
@@ -142,7 +143,7 @@ app.post("/save-book", async (req,res) => {
 /* ================= EDIT / DELETE BOOK ================= */
 app.post("/edit-book", async (req,res) => {
   try {
-    const {bookId,userUid,accessToken,title,price,description,language,pageCount}=req.body;
+    const {bookId,userUid,accessToken,title,price,description,language,category,pageCount}=req.body;
     if(!bookId||!userUid||!accessToken) return res.status(400).json({error:"Missing data"});
     if(!await verifyPiUser(req,res)) return;
     const bookRef=db.collection("books").doc(bookId);
@@ -153,6 +154,7 @@ app.post("/edit-book", async (req,res) => {
     if(title) updates.title=sanitizeText(title).substring(0,200);
     if(description) updates.description=sanitizeText(description).substring(0,2000);
     if(language) updates.language=sanitizeText(language).substring(0,30);
+    if(category && ALLOWED_CATEGORIES.includes(category)) updates.category=category;
 if(pageCount) updates.pageCount=sanitizeText(String(pageCount)).substring(0,10);
     if(price!==undefined){
       const p=Number(price);
